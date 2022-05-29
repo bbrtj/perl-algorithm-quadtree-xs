@@ -6,9 +6,13 @@
 #include "ppport.h"
 
 #define CHILDREN_PER_NODE 4
+
 typedef struct QuadTreeNode QuadTreeNode;
 typedef struct QuadTreeRootNode QuadTreeRootNode;
 typedef struct DynArr DynArr;
+typedef struct Shape Shape;
+
+typedef enum ShapeType ShapeType;
 
 struct QuadTreeNode {
 	QuadTreeNode *children;
@@ -25,6 +29,16 @@ struct DynArr {
 	void **ptr;
 	unsigned int count;
 	unsigned int max_size;
+};
+
+enum ShapeType {
+	shape_rectangle,
+	shape_circle
+};
+
+struct Shape {
+	ShapeType type;
+	double dimensions[4];
 };
 
 DynArr* create_array()
@@ -89,6 +103,7 @@ QuadTreeNode* create_nodes(int count)
 	return node;
 }
 
+// NOTE: does not actually free the node, but frees its children nodes
 void destroy_node(QuadTreeNode *node)
 {
 	if (node->values != NULL) {
@@ -151,51 +166,11 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	}
 }
 
-// rectangular operations
-
 bool is_within_node_rect(QuadTreeNode *node, double xmin, double ymin, double xmax, double ymax)
 {
 	return (xmin <= node->xmax && xmax >= node->xmin)
 		&& (ymin <= node->ymax && ymax >= node->ymin);
 }
-
-void find_nodes_rect(QuadTreeNode *node, AV *ret, double xmin, double ymin, double xmax, double ymax)
-{
-	if (!is_within_node_rect(node, xmin, ymin, xmax, ymax)) return;
-
-	int i;
-
-	if (node->values != NULL) {
-		for (i = 0; i < node->values->count; ++i) {
-			SV *fetched = (SV*) node->values->ptr[i];
-			SvREFCNT_inc(fetched);
-			av_push(ret, fetched);
-		}
-	}
-	else {
-		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			find_nodes_rect(&node->children[i], ret, xmin, ymin, xmax, ymax);
-		}
-	}
-}
-
-void fill_nodes_rect(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, double xmin, double ymin, double xmax, double ymax)
-{
-	if (!is_within_node_rect(node, xmin, ymin, xmax, ymax)) return;
-
-	if (node->values != NULL) {
-		push_array_SV(node->values, value);
-		store_backref(root, node, value);
-	}
-	else {
-		int i;
-		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes_rect(root, &node->children[i], value, xmin, ymin, xmax, ymax);
-		}
-	}
-}
-
-// circular operations
 
 bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
 {
@@ -223,9 +198,19 @@ bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
 	return check_x * check_x + check_y * check_y <= radius * radius;
 }
 
-void find_nodes_circ(QuadTreeNode *node, AV *ret, double x, double y, double radius)
+bool is_within_node(QuadTreeNode *node, Shape *param)
 {
-	if (!is_within_node_circ(node, x, y, radius)) return;
+	switch (param->type) {
+		case shape_rectangle:
+			return is_within_node_rect(node, param->dimensions[0], param->dimensions[1], param->dimensions[2], param->dimensions[3]);
+		case shape_circle:
+			return is_within_node_circ(node, param->dimensions[0], param->dimensions[1], param->dimensions[2]);
+	}
+}
+
+void find_nodes(QuadTreeNode *node, AV *ret, Shape *param)
+{
+	if (!is_within_node(node, param)) return;
 
 	int i;
 
@@ -238,14 +223,14 @@ void find_nodes_circ(QuadTreeNode *node, AV *ret, double x, double y, double rad
 	}
 	else {
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			find_nodes_circ(&node->children[i], ret, x, y, radius);
+			find_nodes(&node->children[i], ret, param);
 		}
 	}
 }
 
-void fill_nodes_circ(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, double x, double y, double radius)
+void fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param)
 {
-	if (!is_within_node_circ(node, x, y, radius)) return;
+	if (!is_within_node(node, param)) return;
 
 	if (node->values != NULL) {
 		push_array_SV(node->values, value);
@@ -254,11 +239,10 @@ void fill_nodes_circ(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, doub
 	else {
 		int i;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes_circ(root, &node->children[i], value, x, y, radius);
+			fill_nodes(root, &node->children[i], value, param);
 		}
 	}
 }
-
 
 // proper XS Code starts here
 
@@ -311,27 +295,18 @@ _AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		HV *params = (HV*) SvRV(self);
 		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
 
+		Shape param;
+		param.type = shape_circle;
+		param.dimensions[0] = x;
+		param.dimensions[1] = y;
+		param.dimensions[2] = x2_or_radius;
+
 		if (items > 5) {
-			fill_nodes_rect(
-				root,
-				root->node,
-				object,
-				x,
-				y,
-				x2_or_radius,
-				SvNV(ST(5))
-			);
+			param.type = shape_rectangle;
+			param.dimensions[3] = SvNV(ST(5));
 		}
-		else {
-			fill_nodes_circ(
-				root,
-				root->node,
-				object,
-				x,
-				y,
-				x2_or_radius
-			);
-		}
+
+		fill_nodes(root, root->node, object, &param);
 
 SV*
 _AQT_findObjects(self, x, y, x2_or_radius, ...)
@@ -344,25 +319,19 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 		HV *params = (HV*) SvRV(self);
 		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
 
+		Shape param;
+		param.type = shape_circle;
+		param.dimensions[0] = x;
+		param.dimensions[1] = y;
+		param.dimensions[2] = x2_or_radius;
+
 		if (items > 4) {
-			find_nodes_rect(
-				root->node,
-				ret,
-				x,
-				y,
-				x2_or_radius,
-				SvNV(ST(4))
-			);
+			param.type = shape_rectangle;
+			param.dimensions[3] = SvNV(ST(4));
 		}
-		else {
-			find_nodes_circ(
-				root->node,
-				ret,
-				x,
-				y,
-				x2_or_radius
-			);
-		}
+
+		find_nodes(root->node, ret, &param);
+
 		RETVAL = newRV_noinc((SV*) ret);
 	OUTPUT:
 		RETVAL
