@@ -37,6 +37,7 @@ void destroy_node(QuadTreeNode *node)
 {
 	if (node->values != NULL) {
 		av_undef(node->values);
+		SvREFCNT_dec((SV*) node->values);
 	}
 	else {
 		int i;
@@ -62,13 +63,17 @@ void store_backref(QuadTreeRootNode *root, QuadTreeNode* node, SV *value)
 	AV *list;
 	if (!hv_exists_ent(root->backref, value, 0)) {
 		list = newAV();
-		hv_store_ent(root->backref, value, newRV((SV*) list), 0);
+		SvREFCNT_inc((SV*) list);
+		if (hv_store_ent(root->backref, value, (SV*) list, 0) == NULL) {
+			SvREFCNT_dec((SV*) list);
+		}
 	}
 	else {
-		list = (AV*) SvRV(HeVAL(hv_fetch_ent(root->backref, value, 0, 0)));
+		list = (AV*) HeVAL(hv_fetch_ent(root->backref, value, 0, 0));
 	}
 
-	av_push(list, newRV((SV*) node->values));
+	SvREFCNT_inc((SV*) node->values);
+	av_push(list, (SV*) node->values);
 }
 
 void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth)
@@ -111,7 +116,11 @@ void find_nodes_rect(QuadTreeNode *node, AV *ret, double xmin, double ymin, doub
 
 	if (node->values != NULL) {
 		for (i = 0; i < av_count(node->values); ++i) {
-			av_push(ret, *av_fetch(node->values, i, 0));
+			SV **fetched = av_fetch(node->values, i, 0);
+			if (fetched != NULL) {
+				av_push(ret, *fetched);
+				SvREFCNT_inc(*fetched);
+			}
 		}
 	}
 	else {
@@ -174,7 +183,11 @@ void find_nodes_circ(QuadTreeNode *node, AV *ret, double x, double y, double rad
 
 	if (node->values != NULL) {
 		for (i = 0; i < av_count(node->values); ++i) {
-			av_push(ret, *av_fetch(node->values, i, 0));
+			SV **fetched = av_fetch(node->values, i, 0);
+			if (fetched != NULL) {
+				av_push(ret, *fetched);
+				SvREFCNT_inc(*fetched);
+			}
 		}
 	}
 	else {
@@ -213,7 +226,11 @@ _AQT_init(obj)
 		QuadTreeRootNode *root = create_root();
 
 		HV *params = (HV*) SvRV(obj);
-		hv_store(params, "ROOT", 4, newSViv((unsigned long) root), 0);
+
+		SV *root_sv = newSViv((unsigned long) root);
+		SvREADONLY_on(root_sv);
+
+		hv_store(params, "ROOT", 4, root_sv, 0);
 
 		node_add_level(root->node,
 			SvNV(*hv_fetch(params, "XMIN", 4, 0)),
@@ -230,9 +247,11 @@ _AQT_deinit(self)
 		HV *params = (HV*) SvRV(self);
 		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
 
+		call_method("_AQT_clear", 0);
 		destroy_node(root->node);
 		free(root->node);
-		hv_undef(root->backref);
+		SvREFCNT_dec((SV*) root->backref);
+
 		free(root);
 
 
@@ -299,7 +318,7 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 				x2_or_radius
 			);
 		}
-		RETVAL = newRV((SV*) ret);
+		RETVAL = newRV_noinc((SV*) ret);
 	OUTPUT:
 		RETVAL
 
@@ -312,11 +331,11 @@ _AQT_delete(self, object)
 		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
 
 		if (hv_exists_ent(root->backref, object, 0)) {
-			AV *list = (AV*) SvRV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
+			AV *list = (AV*) HeVAL(hv_fetch_ent(root->backref, object, 0, 0));
 
 			int i, j;
 			for (i = 0; i < av_count(list); ++i) {
-				AV *current_list = (AV*) SvRV(*av_fetch(list, i, 0));
+				AV *current_list = (AV*) *av_fetch(list, i, 0);
 				AV *new_list = newAV();
 
 				for(j = 0; j < av_count(current_list); ++j) {
@@ -335,6 +354,7 @@ _AQT_delete(self, object)
 				}
 
 				av_undef(new_list);
+				SvREFCNT_dec((SV*) new_list);
 			}
 
 			hv_delete_ent(root->backref, object, 0, 0);
@@ -354,10 +374,12 @@ _AQT_clear(self)
 
 		hv_iterinit(root->backref);
 		while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
-			AV *list = (AV*) SvRV(value);
+			AV *list = (AV*) value;
 			for (i = 0; i < av_count(list); ++i) {
-				av_clear((AV*) SvRV(*av_fetch(list, i, 0)));
+				av_clear((AV*) *av_fetch(list, i, 0));
 			}
+
+			SvREFCNT_dec(value);
 		}
 
 		hv_clear(root->backref);
