@@ -174,10 +174,6 @@ bool is_within_node_rect(QuadTreeNode *node, double xmin, double ymin, double xm
 
 bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
 {
-	if (!is_within_node_rect(node, x - radius, y - radius, x + radius, y + radius)) {
-		return false;
-	}
-
 	double check_x = x < node->xmin
 		? node->xmin
 		: x > node->xmax
