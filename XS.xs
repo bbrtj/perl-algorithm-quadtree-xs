@@ -8,10 +8,11 @@
 #define CHILDREN_PER_NODE 4
 typedef struct QuadTreeNode QuadTreeNode;
 typedef struct QuadTreeRootNode QuadTreeRootNode;
+typedef struct DynArr DynArr;
 
 struct QuadTreeNode {
 	QuadTreeNode *children;
-	AV *values;
+	DynArr *values;
 	double xmin, ymin, xmax, ymax;
 };
 
@@ -20,9 +21,64 @@ struct QuadTreeRootNode {
 	HV *backref;
 };
 
+struct DynArr {
+	void **ptr;
+	unsigned int count;
+	unsigned int max_size;
+};
+
+DynArr* create_array()
+{
+	DynArr *arr = malloc(sizeof *arr);
+	arr->count = 0;
+	arr->max_size = 0;
+
+	return arr;
+}
+
+void destroy_array(DynArr* arr)
+{
+	if (arr->max_size > 0) {
+		free(arr->ptr);
+	}
+
+	free(arr);
+}
+
+void destroy_array_SV(DynArr* arr)
+{
+	int i;
+	for (i = 0; i < arr->count; ++i) {
+		SvREFCNT_dec((SV*) arr->ptr[i]);
+	}
+
+	destroy_array(arr);
+}
+
+void push_array(DynArr *arr, void *ptr)
+{
+	if (arr->max_size == 0) {
+		arr->max_size = 2;
+		arr->ptr = malloc(arr->max_size * sizeof *arr->ptr);
+	}
+	else if (arr->count == arr->max_size) {
+		arr->max_size *= 2;
+		arr->ptr = realloc(arr->ptr, arr->max_size * sizeof *arr->ptr);
+	}
+
+	arr->ptr[arr->count] = ptr;
+	arr->count += 1;
+}
+
+void push_array_SV(DynArr *arr, SV *ptr)
+{
+	push_array(arr, ptr);
+	SvREFCNT_inc(ptr);
+}
+
 QuadTreeNode* create_nodes(int count)
 {
-	QuadTreeNode *node = malloc(count * sizeof(QuadTreeNode));
+	QuadTreeNode *node = malloc(count * sizeof *node);
 
 	int i;
 	for (i = 0; i < count; ++i) {
@@ -36,8 +92,7 @@ QuadTreeNode* create_nodes(int count)
 void destroy_node(QuadTreeNode *node)
 {
 	if (node->values != NULL) {
-		av_undef(node->values);
-		SvREFCNT_dec((SV*) node->values);
+		destroy_array_SV(node->values);
 	}
 	else {
 		int i;
@@ -51,7 +106,7 @@ void destroy_node(QuadTreeNode *node)
 
 QuadTreeRootNode* create_root()
 {
-	QuadTreeRootNode *root = malloc(sizeof(QuadTreeRootNode));
+	QuadTreeRootNode *root = malloc(sizeof *root);
 	root->node = create_nodes(1);
 	root->backref = newHV();
 
@@ -60,20 +115,16 @@ QuadTreeRootNode* create_root()
 
 void store_backref(QuadTreeRootNode *root, QuadTreeNode* node, SV *value)
 {
-	AV *list;
+	DynArr *list;
 	if (!hv_exists_ent(root->backref, value, 0)) {
-		list = newAV();
-		SvREFCNT_inc((SV*) list);
-		if (hv_store_ent(root->backref, value, (SV*) list, 0) == NULL) {
-			SvREFCNT_dec((SV*) list);
-		}
+		list = create_array();
+		hv_store_ent(root->backref, value, newSViv((unsigned long) list), 0);
 	}
 	else {
-		list = (AV*) HeVAL(hv_fetch_ent(root->backref, value, 0, 0));
+		list = (DynArr*) SvIV(HeVAL(hv_fetch_ent(root->backref, value, 0, 0)));
 	}
 
-	SvREFCNT_inc((SV*) node->values);
-	av_push(list, (SV*) node->values);
+	push_array(list, node);
 }
 
 void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth)
@@ -86,7 +137,7 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	node->ymax = ymax;
 
 	if (last) {
-		node->values = newAV();
+		node->values = create_array();
 	}
 	else {
 		node->children = create_nodes(CHILDREN_PER_NODE);
@@ -115,12 +166,10 @@ void find_nodes_rect(QuadTreeNode *node, AV *ret, double xmin, double ymin, doub
 	int i;
 
 	if (node->values != NULL) {
-		for (i = 0; i < av_count(node->values); ++i) {
-			SV **fetched = av_fetch(node->values, i, 0);
-			if (fetched != NULL) {
-				av_push(ret, *fetched);
-				SvREFCNT_inc(*fetched);
-			}
+		for (i = 0; i < node->values->count; ++i) {
+			SV *fetched = (SV*) node->values->ptr[i];
+			SvREFCNT_inc(fetched);
+			av_push(ret, fetched);
 		}
 	}
 	else {
@@ -135,8 +184,7 @@ void fill_nodes_rect(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, doub
 	if (!is_within_node_rect(node, xmin, ymin, xmax, ymax)) return;
 
 	if (node->values != NULL) {
-		av_push(node->values, value);
-		SvREFCNT_inc(value);
+		push_array_SV(node->values, value);
 		store_backref(root, node, value);
 	}
 	else {
@@ -182,12 +230,10 @@ void find_nodes_circ(QuadTreeNode *node, AV *ret, double x, double y, double rad
 	int i;
 
 	if (node->values != NULL) {
-		for (i = 0; i < av_count(node->values); ++i) {
-			SV **fetched = av_fetch(node->values, i, 0);
-			if (fetched != NULL) {
-				av_push(ret, *fetched);
-				SvREFCNT_inc(*fetched);
-			}
+		for (i = 0; i < node->values->count; ++i) {
+			SV *fetched = (SV*) node->values->ptr[i];
+			SvREFCNT_inc(fetched);
+			av_push(ret, fetched);
 		}
 	}
 	else {
@@ -202,8 +248,7 @@ void fill_nodes_circ(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, doub
 	if (!is_within_node_circ(node, x, y, radius)) return;
 
 	if (node->values != NULL) {
-		av_push(node->values, value);
-		SvREFCNT_inc(value);
+		push_array_SV(node->values, value);
 		store_backref(root, node, value);
 	}
 	else {
@@ -331,32 +376,25 @@ _AQT_delete(self, object)
 		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
 
 		if (hv_exists_ent(root->backref, object, 0)) {
-			AV *list = (AV*) HeVAL(hv_fetch_ent(root->backref, object, 0, 0));
+			DynArr* list = (DynArr*) SvIV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
 
 			int i, j;
-			for (i = 0; i < av_count(list); ++i) {
-				AV *current_list = (AV*) *av_fetch(list, i, 0);
-				AV *new_list = newAV();
+			for (i = 0; i < list->count; ++i) {
+				QuadTreeNode *node = (QuadTreeNode*) list->ptr[i];
+				DynArr* new_list = create_array();
 
-				for(j = 0; j < av_count(current_list); ++j) {
-					SV *fetched = *av_fetch(current_list, j, 0);
+				for(j = 0; j < node->values->count; ++j) {
+					SV *fetched = (SV*) node->values->ptr[j];
 					if (!sv_eq(fetched, object)) {
-						SvREFCNT_inc(fetched);
-						av_push(new_list, fetched);
+						push_array_SV(new_list, fetched);
 					}
 				}
 
-				if (av_count(current_list) != av_count(new_list)) {
-					av_clear(current_list);
-					for (j = 0; j < av_count(new_list); ++j) {
-						av_push(current_list, av_pop(new_list));
-					}
-				}
-
-				av_undef(new_list);
-				SvREFCNT_dec((SV*) new_list);
+				destroy_array_SV(node->values);
+				node->values = new_list;
 			}
 
+			destroy_array(list);
 			hv_delete_ent(root->backref, object, 0, 0);
 		}
 
@@ -374,12 +412,14 @@ _AQT_clear(self)
 
 		hv_iterinit(root->backref);
 		while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
-			AV *list = (AV*) value;
-			for (i = 0; i < av_count(list); ++i) {
-				av_clear((AV*) *av_fetch(list, i, 0));
+			DynArr *list = (DynArr*) SvIV(value);
+			for (i = 0; i < list->count; ++i) {
+				QuadTreeNode *node = (QuadTreeNode*) list->ptr[i];
+				destroy_array_SV(node->values);
+				node->values = create_array();
 			}
 
-			SvREFCNT_dec(value);
+			destroy_array(list);
 		}
 
 		hv_clear(root->backref);
