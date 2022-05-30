@@ -77,7 +77,11 @@ void push_array(DynArr *arr, void *ptr)
 	}
 	else if (arr->count == arr->max_size) {
 		arr->max_size *= 2;
-		arr->ptr = realloc(arr->ptr, arr->max_size * sizeof *arr->ptr);
+
+		void *enlarged = realloc(arr->ptr, arr->max_size * sizeof *arr->ptr);
+		assert(enlarged != NULL);
+
+		arr->ptr = enlarged;
 	}
 
 	arr->ptr[arr->count] = ptr;
@@ -240,6 +244,23 @@ void fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *pa
 	}
 }
 
+// XS helpers
+
+SV* get_hash_key (HV* hash, const char* key)
+{
+	SV **value = hv_fetch(hash, key, strlen(key), 0);
+
+	assert(value != NULL);
+	return *value;
+}
+
+QuadTreeRootNode* get_root_from_perl(SV *self)
+{
+	HV *params = (HV*) SvRV(self);
+
+	return (QuadTreeRootNode*) SvIV(get_hash_key(params, "ROOT"));
+}
+
 // proper XS Code starts here
 
 MODULE = Algorithm::QuadTree::XS		PACKAGE = Algorithm::QuadTree::XS
@@ -252,25 +273,23 @@ _AQT_init(obj)
 
 		HV *params = (HV*) SvRV(obj);
 
+		node_add_level(root->node,
+			SvNV(get_hash_key(params, "XMIN")),
+			SvNV(get_hash_key(params, "YMIN")),
+			SvNV(get_hash_key(params, "XMAX")),
+			SvNV(get_hash_key(params, "YMAX")),
+			SvIV(get_hash_key(params, "DEPTH"))
+		);
+
 		SV *root_sv = newSViv((unsigned long) root);
 		SvREADONLY_on(root_sv);
-
-		hv_store(params, "ROOT", 4, root_sv, 0);
-
-		node_add_level(root->node,
-			SvNV(*hv_fetch(params, "XMIN", 4, 0)),
-			SvNV(*hv_fetch(params, "YMIN", 4, 0)),
-			SvNV(*hv_fetch(params, "XMAX", 4, 0)),
-			SvNV(*hv_fetch(params, "YMAX", 4, 0)),
-			SvIV(*hv_fetch(params, "DEPTH", 5, 0))
-		);
+		hv_stores(params, "ROOT", root_sv);
 
 void
 _AQT_deinit(self)
 		SV *self
 	CODE:
-		HV *params = (HV*) SvRV(self);
-		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
+		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		call_method("_AQT_clear", 0);
 		destroy_node(root->node);
@@ -288,8 +307,7 @@ _AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		double y
 		double x2_or_radius
 	CODE:
-		HV *params = (HV*) SvRV(self);
-		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
+		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		Shape param;
 		param.type = shape_circle;
@@ -311,9 +329,9 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 		double y
 		double x2_or_radius
 	CODE:
+		QuadTreeRootNode *root = get_root_from_perl(self);
+
 		AV *ret = newAV();
-		HV *params = (HV*) SvRV(self);
-		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
 
 		Shape param;
 		param.type = shape_circle;
@@ -337,8 +355,7 @@ _AQT_delete(self, object)
 		SV *self
 		SV *object
 	CODE:
-		HV *params = (HV*) SvRV(self);
-		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
+		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		if (hv_exists_ent(root->backref, object, 0)) {
 			DynArr* list = (DynArr*) SvIV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
@@ -367,8 +384,7 @@ void
 _AQT_clear(self)
 		SV* self
 	CODE:
-		HV *params = (HV*) SvRV(self);
-		QuadTreeRootNode *root = (QuadTreeRootNode*) SvIV(*hv_fetch(params, "ROOT", 4, 0));
+		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		char *key;
 		I32 retlen;
