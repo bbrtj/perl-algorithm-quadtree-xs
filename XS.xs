@@ -265,6 +265,8 @@ QuadTreeRootNode* get_root_from_perl(SV *self)
 
 MODULE = Algorithm::QuadTree::XS		PACKAGE = Algorithm::QuadTree::XS
 
+PROTOTYPES: DISABLE
+
 void
 _AQT_init(obj)
 		SV *obj
