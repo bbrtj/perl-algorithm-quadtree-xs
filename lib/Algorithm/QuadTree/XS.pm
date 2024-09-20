@@ -37,10 +37,6 @@ This implementation is compatible with C<Algorithm::QuadTree::PP>. Benchmarks
 on author's machine show it runs at least five times faster (depending on the
 tree depth).
 
-B<Beta quality>: while this module works well in general cases, it may also
-contain errors common to C code like memory leaks or access violations. Please
-do report if you encounter any problems.
-
 =head1 SEE ALSO
 
 L<Algorithm::QuadTree>
