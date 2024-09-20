@@ -1,5 +1,7 @@
 Revision history for Perl extension Algorithm::QuadTree::XS.
 
+{{$NEXT}}
+
 0.04 Thu Nov 10 2022
 	- greatly improve search performance
 
