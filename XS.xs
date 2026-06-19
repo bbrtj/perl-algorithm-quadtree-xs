@@ -5,6 +5,7 @@
 #include "ppport.h"
 
 #define CHILDREN_PER_NODE 4
+#define MAX_SIZE_CLEAR 16
 
 typedef struct QuadTreeNode QuadTreeNode;
 typedef struct QuadTreeRootNode QuadTreeRootNode;
@@ -68,6 +69,21 @@ void destroy_array_SV(DynArr* arr)
 	}
 
 	destroy_array(arr);
+}
+
+void clear_array_SV(DynArr *arr)
+{
+	int i;
+	for (i = 0; i < arr->count; ++i) {
+		SvREFCNT_dec((SV*) arr->ptr[i]);
+	}
+
+	arr->count = 0;
+
+	if (arr->max_size >= MAX_SIZE_CLEAR) {
+		arr->max_size = 0;
+		free(arr->ptr);
+	}
 }
 
 void push_array(DynArr *arr, void *ptr)
@@ -263,6 +279,38 @@ void fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *pa
 	}
 }
 
+void clear_node(QuadTreeNode *node)
+{
+	if (!node->has_objects) return;
+	node->has_objects = false;
+
+	if (node->values != NULL) {
+		clear_array_SV(node->values);
+	}
+	else {
+		int i;
+		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
+			clear_node(&node->children[i]);
+		}
+	}
+}
+
+void clear_tree(QuadTreeRootNode *root)
+{
+	clear_node(root->node);
+
+	char *key;
+	I32 retlen;
+	SV *value;
+
+	hv_iterinit(root->backref);
+	while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
+		destroy_array((DynArr*) SvIV(value));
+	}
+
+	hv_clear(root->backref);
+}
+
 /* XS helpers */
 
 SV* get_hash_key (HV* hash, const char* key)
@@ -278,29 +326,6 @@ QuadTreeRootNode* get_root_from_perl(SV *self)
 	HV *params = (HV*) SvRV(self);
 
 	return (QuadTreeRootNode*) SvIV(get_hash_key(params, "ROOT"));
-}
-
-void clear_tree(QuadTreeRootNode *root)
-{
-		char *key;
-		I32 retlen;
-		SV *value;
-		int i;
-
-		hv_iterinit(root->backref);
-		while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
-			DynArr *list = (DynArr*) SvIV(value);
-			for (i = 0; i < list->count; ++i) {
-				QuadTreeNode *node = (QuadTreeNode*) list->ptr[i];
-				destroy_array_SV(node->values);
-				node->values = create_array();
-				clear_has_objects(node);
-			}
-
-			destroy_array(list);
-		}
-
-		hv_clear(root->backref);
 }
 
 /* proper XS Code starts here */
