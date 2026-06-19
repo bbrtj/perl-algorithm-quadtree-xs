@@ -5,7 +5,9 @@
 #include "ppport.h"
 
 #define CHILDREN_PER_NODE 4
-#define MAX_SIZE_CLEAR 16
+#define MAX_SIZE_INITIAL 4
+#define MAX_SIZE_GROWTH 2
+#define MAX_SIZE_CLEAR 32
 
 typedef struct QuadTreeNode QuadTreeNode;
 typedef struct QuadTreeRootNode QuadTreeRootNode;
@@ -88,17 +90,19 @@ void clear_array_SV(DynArr *arr)
 
 void push_array(DynArr *arr, void *ptr)
 {
-	if (arr->max_size == 0) {
-		arr->max_size = 2;
-		arr->ptr = malloc(arr->max_size * sizeof *arr->ptr);
-	}
-	else if (arr->count == arr->max_size) {
-		arr->max_size *= 2;
+	if (arr->count == arr->max_size) {
+		if (arr->max_size == 0) {
+			arr->max_size = MAX_SIZE_INITIAL;
+			arr->ptr = malloc(arr->max_size * sizeof *arr->ptr);
+		}
+		else {
+			arr->max_size *= MAX_SIZE_GROWTH;
 
-		void *enlarged = realloc(arr->ptr, arr->max_size * sizeof *arr->ptr);
-		assert(enlarged != NULL);
+			void *enlarged = realloc(arr->ptr, arr->max_size * sizeof *arr->ptr);
+			assert(enlarged != NULL);
 
-		arr->ptr = enlarged;
+			arr->ptr = enlarged;
+		}
 	}
 
 	arr->ptr[arr->count] = ptr;
@@ -213,21 +217,18 @@ bool is_within_node_rect(QuadTreeNode *node, double xmin, double ymin, double xm
 bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
 {
 	double check_x = x < node->xmin
-		? node->xmin
+		? node->xmin - x
 		: x > node->xmax
-			? node->xmax
-			: x
+			? node->xmax - x
+			: 0
 	;
 
 	double check_y = y < node->ymin
-		? node->ymin
+		? node->ymin - y
 		: y > node->ymax
-			? node->ymax
-			: y
+			? node->ymax - y
+			: 0
 	;
-
-	check_x -= x;
-	check_y -= y;
 
 	return check_x * check_x + check_y * check_y <= radius * radius;
 }
