@@ -5,6 +5,8 @@
 #include "perl.h"
 #include "XSUB.h"
 
+#include "ppport.h"
+
 typedef struct QuadTreeNode QuadTreeNode;
 typedef struct QuadTreeRootNode QuadTreeRootNode;
 typedef struct DynArr DynArr;
