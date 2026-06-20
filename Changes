@@ -1,6 +1,7 @@
 Revision history for Perl extension Algorithm::QuadTree::XS.
 
 {{$NEXT}}
+	- add Algorithm::QuadTree::XS::NoBackRefs implementation
 
 0.06 Sat Jun 20 2026
 	- greatly increase tree clearing performance
