@@ -22,6 +22,7 @@ struct QuadTreeNode {
 struct QuadTreeRootNode {
 	QuadTreeNode *node;
 	HV *backref;
+	DynArr *objects;
 };
 
 struct DynArr {
@@ -45,8 +46,6 @@ typedef enum ShapeType ShapeType;
 
 DynArr* create_array();
 void destroy_array(DynArr* arr);
-void destroy_array_SV(DynArr* arr);
-void clear_array_SV(DynArr *arr);
 void push_array(DynArr *arr, void *ptr);
 void push_array_SV(DynArr *arr, SV *ptr);
 QuadTreeNode* create_nodes(int count, QuadTreeNode *parent);
@@ -57,8 +56,8 @@ QuadTreeRootNode* create_root_nobackref();
 void store_backref(QuadTreeRootNode *root, QuadTreeNode* node, SV *value);
 void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth);
 void find_nodes(QuadTreeNode *node, AV *ret, Shape *param);
-void fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param);
-void fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param);
+bool fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param);
+bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param);
 void clear_tree(QuadTreeRootNode *root);
 
 /* XS helpers */

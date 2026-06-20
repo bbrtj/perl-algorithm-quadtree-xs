@@ -64,7 +64,9 @@ _AQT_addObject(self, object, x, y, x2_or_radius, ...)
 			param.dimensions[3] = SvNV(ST(5));
 		}
 
-		fill_nodes(root, root->node, object, &param);
+		if (fill_nodes(root, root->node, object, &param)) {
+			push_array_SV(root->objects, object);
+		}
 
 SV*
 _AQT_findObjects(self, x, y, x2_or_radius, ...)
@@ -112,17 +114,31 @@ _AQT_delete(self, object)
 				for(j = 0; j < node->values->count; ++j) {
 					SV *fetched = (SV*) node->values->ptr[j];
 					if (!sv_eq(fetched, object)) {
-						push_array_SV(new_list, fetched);
+						push_array(new_list, fetched);
 					}
 				}
 
-				destroy_array_SV(node->values);
+				destroy_array(node->values);
 				node->values = new_list;
 				if (new_list->count == 0) clear_has_objects(node);
 			}
 
 			destroy_array(list);
 			hv_delete_ent(root->backref, object, 0, 0);
+
+			DynArr* new_list = create_array();
+			for(j = 0; j < root->objects->count; ++j) {
+				SV *fetched = (SV*) root->objects->ptr[j];
+				if (!sv_eq(fetched, object)) {
+					push_array(new_list, fetched);
+				}
+				else {
+					SvREFCNT_dec(fetched);
+				}
+			}
+
+			destroy_array(root->objects);
+			root->objects = new_list;
 		}
 
 void
@@ -190,7 +206,9 @@ nbr_AQT_addObject(self, object, x, y, x2_or_radius, ...)
 			param.dimensions[3] = SvNV(ST(5));
 		}
 
-		fill_nodes_nobackref(root->node, object, &param);
+		if (fill_nodes_nobackref(root->node, object, &param)) {
+			push_array_SV(root->objects, object);
+		}
 
 SV*
 nbr_AQT_findObjects(self, x, y, x2_or_radius, ...)

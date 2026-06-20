@@ -23,29 +23,24 @@ void destroy_array(DynArr* arr)
 	free(arr);
 }
 
-void destroy_array_SV(DynArr* arr)
+void clear_array(DynArr *arr)
 {
-	int i;
-	for (i = 0; i < arr->count; ++i) {
-		SvREFCNT_dec((SV*) arr->ptr[i]);
-	}
-
-	destroy_array(arr);
-}
-
-void clear_array_SV(DynArr *arr)
-{
-	int i;
-	for (i = 0; i < arr->count; ++i) {
-		SvREFCNT_dec((SV*) arr->ptr[i]);
-	}
-
 	arr->count = 0;
 
 	if (arr->max_size >= MAX_SIZE_CLEAR) {
 		arr->max_size = 0;
 		free(arr->ptr);
 	}
+}
+
+void refresh_object_array (DynArr* arr)
+{
+	int i;
+	for (i = 0; i < arr->count; ++i) {
+		SvREFCNT_dec((SV*) arr->ptr[i]);
+	}
+
+	clear_array(arr);
 }
 
 void push_array(DynArr *arr, void *ptr)
@@ -94,7 +89,7 @@ QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
 void destroy_node(QuadTreeNode *node)
 {
 	if (node->values != NULL) {
-		destroy_array_SV(node->values);
+		destroy_array(node->values);
 	}
 	else {
 		int i;
@@ -121,20 +116,20 @@ void clear_has_objects (QuadTreeNode *node)
 	}
 }
 
-QuadTreeRootNode* create_root()
-{
-	QuadTreeRootNode *root = malloc(sizeof *root);
-	root->node = create_nodes(1, NULL);
-	root->backref = newHV();
-
-	return root;
-}
-
 QuadTreeRootNode* create_root_nobackref()
 {
 	QuadTreeRootNode *root = malloc(sizeof *root);
 	root->node = create_nodes(1, NULL);
 	root->backref = NULL;
+	root->objects = create_array();
+
+	return root;
+}
+
+QuadTreeRootNode* create_root()
+{
+	QuadTreeRootNode *root = create_root_nobackref();
+	root->backref = newHV();
 
 	return root;
 }
@@ -232,37 +227,45 @@ void find_nodes(QuadTreeNode *node, AV *ret, Shape *param)
 	}
 }
 
-void fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
+bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
 {
-	if (!is_within_node(node, param)) return;
+	if (!is_within_node(node, param)) return false;
 
 	node->has_objects = true;
 	if (node->values != NULL) {
-		push_array_SV(node->values, value);
+		push_array(node->values, value);
+		return true;
 	}
 	else {
 		int i;
+		bool result = false;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes_nobackref(&node->children[i], value, param);
+			result = fill_nodes_nobackref(&node->children[i], value, param) || result;
 		}
+
+		return result;
 	}
 }
 
-void fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param)
+bool fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param)
 {
-	if (!is_within_node(node, param)) return;
+	if (!is_within_node(node, param)) return false;
 
 	node->has_objects = true;
 	if (node->values != NULL) {
-		push_array_SV(node->values, value);
+		push_array(node->values, value);
 		if (root->backref != NULL)
 			store_backref(root, node, value);
+		return true;
 	}
 	else {
 		int i;
+		bool result = false;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes(root, &node->children[i], value, param);
+			result = fill_nodes(root, &node->children[i], value, param) || result;
 		}
+
+		return result;
 	}
 }
 
@@ -272,7 +275,7 @@ void clear_node(QuadTreeNode *node)
 	node->has_objects = false;
 
 	if (node->values != NULL) {
-		clear_array_SV(node->values);
+		clear_array(node->values);
 	}
 	else {
 		int i;
@@ -298,6 +301,8 @@ void clear_tree(QuadTreeRootNode *root)
 
 		hv_clear(root->backref);
 	}
+
+	refresh_object_array(root->objects);
 }
 
 /* XS helpers */
