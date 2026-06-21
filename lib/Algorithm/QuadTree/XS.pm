@@ -13,6 +13,8 @@ our @EXPORT = qw(
 	_AQT_clear
 );
 
+use constant UNIQUE_RESULTS => 1;
+
 # NOTE: this implementation lives here for XS to load properly, but a separate
 # file including this module is present to allow regular perl module loading to
 # find it by name
@@ -31,6 +33,8 @@ our @EXPORT = qw(
 	_AQT_delete
 	_AQT_clear
 );
+
+use constant UNIQUE_RESULTS => 1;
 
 sub _AQT_delete
 {

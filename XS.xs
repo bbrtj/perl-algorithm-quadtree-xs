@@ -77,7 +77,7 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 	CODE:
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
-		AV *ret = newAV();
+		HV *ret_hash = newHV();
 
 		Shape param;
 		param.type = shape_circle;
@@ -90,8 +90,10 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 			param.dimensions[3] = SvNV(ST(4));
 		}
 
-		find_nodes(root->node, ret, &param);
+		find_nodes(root->node, ret_hash, &param);
+		AV *ret = get_hash_values(ret_hash);
 
+		SvREFCNT_dec((SV*) ret_hash);
 		RETVAL = newRV_noinc((SV*) ret);
 	OUTPUT:
 		RETVAL
@@ -219,7 +221,7 @@ nbr_AQT_findObjects(self, x, y, x2_or_radius, ...)
 	CODE:
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
-		AV *ret = newAV();
+		HV *ret_hash = newHV();
 
 		Shape param;
 		param.type = shape_circle;
@@ -232,8 +234,10 @@ nbr_AQT_findObjects(self, x, y, x2_or_radius, ...)
 			param.dimensions[3] = SvNV(ST(4));
 		}
 
-		find_nodes(root->node, ret, &param);
+		find_nodes(root->node, ret_hash, &param);
+		AV *ret = get_hash_values(ret_hash);
 
+		SvREFCNT_dec((SV*) ret_hash);
 		RETVAL = newRV_noinc((SV*) ret);
 	OUTPUT:
 		RETVAL

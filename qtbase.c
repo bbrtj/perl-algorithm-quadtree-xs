@@ -207,7 +207,7 @@ bool is_within_node(QuadTreeNode *node, Shape *param)
 	}
 }
 
-void find_nodes(QuadTreeNode *node, AV *ret, Shape *param)
+void find_nodes(QuadTreeNode *node, HV *ret, Shape *param)
 {
 	if (!node->has_objects || !is_within_node(node, param)) return;
 
@@ -217,7 +217,7 @@ void find_nodes(QuadTreeNode *node, AV *ret, Shape *param)
 		for (i = 0; i < node->values->count; ++i) {
 			SV *fetched = (SV*) node->values->ptr[i];
 			SvREFCNT_inc(fetched);
-			av_push(ret, fetched);
+			hv_store_ent(ret, fetched, fetched, 0);
 		}
 	}
 	else {
@@ -320,5 +320,20 @@ QuadTreeRootNode* get_root_from_perl(SV *self)
 	HV *params = (HV*) SvRV(self);
 
 	return (QuadTreeRootNode*) SvIV(get_hash_key(params, "ROOT"));
+}
+
+AV* get_hash_values (HV* hash)
+{
+	AV *ret = newAV();
+	HE *he;
+
+	hv_iterinit(hash);
+	while ((he = hv_iternext(hash)) != NULL) {
+		SV *fetched = HeVAL(he);
+		SvREFCNT_inc(fetched);
+		av_push(ret, fetched);
+	}
+
+	return ret;
 }
 

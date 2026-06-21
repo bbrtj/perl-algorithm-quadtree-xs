@@ -1,6 +1,7 @@
 Revision history for Perl extension Algorithm::QuadTree::XS.
 
 {{$NEXT}}
+	- deduplicate result list on the fly using a hash, greatly increasing search performance
 
 0.07 Sat Jun 20 2026
 	- add Algorithm::QuadTree::XS::NoBackRefs implementation
