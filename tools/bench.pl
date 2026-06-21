@@ -26,7 +26,7 @@ my $qt_pre = Algorithm::QuadTree->new(
 	-depth => $depth
 );
 
-for (1 .. 100) {
+for (1 .. 10) {
 	$qt_pre->add("test$_", 400, 400, 600, 600);
 }
 
@@ -40,26 +40,29 @@ my $center = 501 + $side / 2;
 
 timethese 200.01, {
 	clear => sub {
-		$qt->clear;
 		$qt->add('test', 0, 0, 1000, 1000);
-	},
-	insert_rectangles => sub {
 		$qt->clear;
-		for (1 .. 100) {
-			$qt->add("test$_", $start, $start, $start + $side, $start + $side);
+	},
+	insert_100 => sub {
+		$qt->clear;
+
+		for my $x (0 .. 4) {
+			for my $y (0 .. 9) {
+				$qt->add("test$x$y", $x * 100, $y * 100, $x * 100 + $side, $y * 100 + $side);
+			}
+		}
+
+		for my $x (5 .. 9) {
+			for my $y (0 .. 9) {
+				$qt->add("test$x$y", $x * 100, $y * 100, $radius);
+			}
 		}
 	},
-	insert_circles => sub {
-		$qt->clear;
-		for (1 .. 100) {
-			$qt->add("test$_", $center, $center, $radius);
-		}
-	},
-	find_rectangle => sub {
-		$qt_pre->getEnclosedObjects($start, $start, $start + $side, $start + $side);
-	},
-	find_circle => sub {
-		$qt_pre->getEnclosedObjects($center, $center, $radius);
+	find_100 => sub {
+		$qt_pre->getEnclosedObjects($start, $start, $start + $side, $start + $side)
+			for 0 .. 4;
+		$qt_pre->getEnclosedObjects($center, $center, $radius)
+			for 5 .. 9;
 	},
 };
 
