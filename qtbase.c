@@ -231,42 +231,42 @@ bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
 {
 	if (!is_within_node(node, param)) return false;
 
-	node->has_objects = true;
 	if (node->values != NULL) {
 		push_array(node->values, value);
-		return true;
 	}
 	else {
 		int i;
-		bool result = false;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			result = fill_nodes_nobackref(&node->children[i], value, param) || result;
+			fill_nodes_nobackref(&node->children[i], value, param);
 		}
-
-		return result;
 	}
+
+	/* NOTE: only first level result is important, since if the object fits in
+	 * the tree area at all, it must fit into one of the leaves */
+	node->has_objects = true;
+	return true;
 }
 
 bool fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param)
 {
 	if (!is_within_node(node, param)) return false;
 
-	node->has_objects = true;
 	if (node->values != NULL) {
 		push_array(node->values, value);
 		if (root->backref != NULL)
 			store_backref(root, node, value);
-		return true;
 	}
 	else {
 		int i;
-		bool result = false;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			result = fill_nodes(root, &node->children[i], value, param) || result;
+			fill_nodes(root, &node->children[i], value, param);
 		}
-
-		return result;
 	}
+
+	/* NOTE: only first level result is important, since if the object fits in
+	 * the tree area at all, it must fit into one of the leaves */
+	node->has_objects = true;
+	return true;
 }
 
 void clear_node(QuadTreeNode *node)
