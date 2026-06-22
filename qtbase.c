@@ -5,6 +5,17 @@
 #define MAX_SIZE_GROWTH 2
 #define MAX_SIZE_CLEAR 32
 
+Shape* create_shape()
+{
+	Shape *s = malloc(sizeof *s);
+	return s;
+}
+
+void destroy_shape(Shape *s)
+{
+	free(s);
+}
+
 DynArr* create_array()
 {
 	DynArr *arr = malloc(sizeof *arr);
@@ -33,16 +44,6 @@ void clear_array(DynArr *arr)
 	}
 }
 
-void refresh_object_array (DynArr* arr)
-{
-	int i;
-	for (i = 0; i < arr->count; ++i) {
-		SvREFCNT_dec((SV*) arr->ptr[i]);
-	}
-
-	clear_array(arr);
-}
-
 void push_array(DynArr *arr, void *ptr)
 {
 	if (arr->count == arr->max_size) {
@@ -64,10 +65,34 @@ void push_array(DynArr *arr, void *ptr)
 	arr->count += 1;
 }
 
-void push_array_SV(DynArr *arr, SV *ptr)
+void adopt_object (QuadTreeRootNode *root, SV *value, Shape *s)
 {
-	push_array(arr, ptr);
-	SvREFCNT_inc(ptr);
+	push_array(root->objects, value);
+	SvREFCNT_inc(value);
+	if (root->backref != NULL)
+		hv_store_ent(root->backref, value, newSViv((uintptr_t) s), 0);
+}
+
+void disown_object (QuadTreeRootNode *root, SV *value)
+{
+	int i;
+	DynArr* new_list = create_array();
+	for(i = 0; i < root->objects->count; ++i) {
+		SV *fetched = (SV*) root->objects->ptr[i];
+		if (!sv_eq(fetched, value)) {
+			push_array(new_list, fetched);
+		}
+		else {
+			SvREFCNT_dec(fetched);
+		}
+	}
+
+	destroy_array(root->objects);
+	root->objects = new_list;
+
+	/* NOTE: no shape destruction here, since "adopt_object" does not create it */
+	if (root->backref != NULL)
+		hv_delete_ent(root->backref, value, 0, 0);
 }
 
 QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
@@ -132,20 +157,6 @@ QuadTreeRootNode* create_root()
 	root->backref = newHV();
 
 	return root;
-}
-
-void store_backref(QuadTreeRootNode *root, QuadTreeNode* node, SV *value)
-{
-	DynArr *list;
-	if (!hv_exists_ent(root->backref, value, 0)) {
-		list = create_array();
-		hv_store_ent(root->backref, value, newSViv((uintptr_t) list), 0);
-	}
-	else {
-		list = (DynArr*) SvIV(HeVAL(hv_fetch_ent(root->backref, value, 0, 0)));
-	}
-
-	push_array(list, node);
 }
 
 void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth)
@@ -220,7 +231,7 @@ void find_nodes(QuadTreeNode *node, HV *ret, Shape *param)
 	}
 }
 
-bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
+bool fill_nodes (QuadTreeNode *node, SV *value, Shape *param)
 {
 	if (!is_within_node(node, param)) return false;
 
@@ -230,7 +241,7 @@ bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
 	else {
 		int i;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes_nobackref(&node->children[i], value, param);
+			fill_nodes(&node->children[i], value, param);
 		}
 	}
 
@@ -240,26 +251,31 @@ bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
 	return true;
 }
 
-bool fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param)
+void delete_nodes(QuadTreeNode *node, SV *value, Shape *param)
 {
-	if (!is_within_node(node, param)) return false;
+	if (!node->has_objects || !is_within_node(node, param)) return;
+
+	int i;
 
 	if (node->values != NULL) {
-		push_array(node->values, value);
-		if (root->backref != NULL)
-			store_backref(root, node, value);
+		DynArr* new_list = create_array();
+
+		for (i = 0; i < node->values->count; ++i) {
+			SV *fetched = (SV*) node->values->ptr[i];
+			if (!sv_eq(fetched, value)) {
+				push_array(new_list, fetched);
+			}
+		}
+
+		destroy_array(node->values);
+		node->values = new_list;
+		if (new_list->count == 0) clear_has_objects(node);
 	}
 	else {
-		int i;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes(root, &node->children[i], value, param);
+			delete_nodes(&node->children[i], value, param);
 		}
 	}
-
-	/* NOTE: only first level result is important, since if the object fits in
-	 * the tree area at all, it must fit into one of the leaves */
-	node->has_objects = true;
-	return true;
 }
 
 void clear_node(QuadTreeNode *node)
@@ -282,6 +298,7 @@ void clear_tree(QuadTreeRootNode *root)
 {
 	clear_node(root->node);
 
+	int i;
 	char *key;
 	I32 retlen;
 	SV *value;
@@ -289,13 +306,17 @@ void clear_tree(QuadTreeRootNode *root)
 	if (root->backref != NULL) {
 		hv_iterinit(root->backref);
 		while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
-			destroy_array((DynArr*) SvIV(value));
+			destroy_shape((Shape*) SvIV(value));
 		}
 
 		hv_clear(root->backref);
 	}
 
-	refresh_object_array(root->objects);
+	for (i = 0; i < root->objects->count; ++i) {
+		SvREFCNT_dec((SV*) root->objects->ptr[i]);
+	}
+
+	clear_array(root->objects);
 }
 
 /* XS helpers */
