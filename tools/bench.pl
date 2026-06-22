@@ -2,7 +2,6 @@ use strict;
 use warnings;
 
 # BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::PP'; }
-# BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::XS::NoBackRefs'; }
 use Algorithm::QuadTree;
 use Benchmark::Dumb qw(timethese);
 use Math::Trig qw(pi);

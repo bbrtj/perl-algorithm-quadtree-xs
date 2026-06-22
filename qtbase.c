@@ -69,8 +69,7 @@ void adopt_object (QuadTreeRootNode *root, SV *value, Shape *s)
 {
 	push_array(root->objects, value);
 	SvREFCNT_inc(value);
-	if (root->backref != NULL)
-		hv_store_ent(root->backref, value, newSViv((uintptr_t) s), 0);
+	hv_store_ent(root->backref, value, newSViv((uintptr_t) s), 0);
 }
 
 void disown_object (QuadTreeRootNode *root, SV *value)
@@ -91,8 +90,7 @@ void disown_object (QuadTreeRootNode *root, SV *value)
 	root->objects = new_list;
 
 	/* NOTE: no shape destruction here, since "adopt_object" does not create it */
-	if (root->backref != NULL)
-		hv_delete_ent(root->backref, value, 0, 0);
+	hv_delete_ent(root->backref, value, 0, 0);
 }
 
 QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
@@ -141,20 +139,12 @@ void clear_has_objects (QuadTreeNode *node)
 	}
 }
 
-QuadTreeRootNode* create_root_nobackref()
+QuadTreeRootNode* create_root()
 {
 	QuadTreeRootNode *root = malloc(sizeof *root);
 	root->node = create_nodes(1, NULL);
-	root->backref = NULL;
-	root->objects = create_array();
-
-	return root;
-}
-
-QuadTreeRootNode* create_root()
-{
-	QuadTreeRootNode *root = create_root_nobackref();
 	root->backref = newHV();
+	root->objects = create_array();
 
 	return root;
 }
@@ -303,19 +293,16 @@ void clear_tree(QuadTreeRootNode *root)
 	I32 retlen;
 	SV *value;
 
-	if (root->backref != NULL) {
-		hv_iterinit(root->backref);
-		while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
-			destroy_shape((Shape*) SvIV(value));
-		}
-
-		hv_clear(root->backref);
+	hv_iterinit(root->backref);
+	while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
+		destroy_shape((Shape*) SvIV(value));
 	}
 
 	for (i = 0; i < root->objects->count; ++i) {
 		SvREFCNT_dec((SV*) root->objects->ptr[i]);
 	}
 
+	hv_clear(root->backref);
 	clear_array(root->objects);
 }
 

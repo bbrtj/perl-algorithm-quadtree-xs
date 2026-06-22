@@ -60,7 +60,6 @@ void push_array(DynArr *arr, void *ptr);
 QuadTreeNode* create_nodes(int count, QuadTreeNode *parent);
 void destroy_node(QuadTreeNode *node);
 QuadTreeRootNode* create_root();
-QuadTreeRootNode* create_root_nobackref();
 
 void adopt_object (QuadTreeRootNode *root, SV *value, Shape *s);
 void disown_object (QuadTreeRootNode *root, SV *value);
