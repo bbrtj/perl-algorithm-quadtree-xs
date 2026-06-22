@@ -318,9 +318,11 @@ SV* get_hash_key (HV* hash, const char* key)
 
 QuadTreeRootNode* get_root_from_perl(SV *self)
 {
-	HV *params = (HV*) SvRV(self);
+	SV **value = hv_fetch((HV*) SvRV(self), "ROOT", 4, 0);
+	if (value == NULL)
+		croak("quad tree root node is undefined");
 
-	return (QuadTreeRootNode*) SvIV(get_hash_key(params, "ROOT"));
+	return (QuadTreeRootNode*) SvIV(*value);
 }
 
 AV* get_hash_values (HV* hash)
