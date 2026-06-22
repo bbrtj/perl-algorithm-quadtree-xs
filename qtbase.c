@@ -4,6 +4,22 @@
 #define MAX_SIZE_INITIAL 4
 #define MAX_SIZE_GROWTH 2
 #define MAX_SIZE_CLEAR 32
+#define MAX_ID_DECIMALS 4
+
+int id_to_str (int value, char *out)
+{
+	/* NOTE: we don't treat 0 as a real id - empty string is returned */
+	/* NOTE: actual number is reversed in the string, but that's okay */
+
+	int len = 0;
+	while (value > 0) {
+		out[len] = value & 0xff;
+		len += 1;
+		value = value >> 4;
+	}
+
+	return len;
+}
 
 DynArr* create_array()
 {
@@ -33,17 +49,7 @@ void clear_array(DynArr *arr)
 	}
 }
 
-void refresh_object_array (DynArr* arr)
-{
-	int i;
-	for (i = 0; i < arr->count; ++i) {
-		SvREFCNT_dec((SV*) arr->ptr[i]);
-	}
-
-	clear_array(arr);
-}
-
-void push_array(DynArr *arr, void *ptr)
+void push_array(DynArr *arr, int id)
 {
 	if (arr->count == arr->max_size) {
 		if (arr->max_size == 0) {
@@ -60,14 +66,8 @@ void push_array(DynArr *arr, void *ptr)
 		}
 	}
 
-	arr->ptr[arr->count] = ptr;
+	arr->ptr[arr->count] = id;
 	arr->count += 1;
-}
-
-void push_array_SV(DynArr *arr, SV *ptr)
-{
-	push_array(arr, ptr);
-	SvREFCNT_inc(ptr);
 }
 
 QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
@@ -121,7 +121,8 @@ QuadTreeRootNode* create_root_nobackref()
 	QuadTreeRootNode *root = malloc(sizeof *root);
 	root->node = create_nodes(1, NULL);
 	root->backref = NULL;
-	root->objects = create_array();
+	root->objects = newHV();
+	root->max_id = 0;
 
 	return root;
 }
@@ -130,22 +131,26 @@ QuadTreeRootNode* create_root()
 {
 	QuadTreeRootNode *root = create_root_nobackref();
 	root->backref = newHV();
+	root->objects_reverse = newHV();
 
 	return root;
 }
 
-void store_backref(QuadTreeRootNode *root, QuadTreeNode* node, SV *value)
+void store_backref(QuadTreeRootNode *root, QuadTreeNode* node, int id)
 {
-	DynArr *list;
-	if (!hv_exists_ent(root->backref, value, 0)) {
-		list = create_array();
-		hv_store_ent(root->backref, value, newSViv((uintptr_t) list), 0);
+	AV *list;
+	char key[MAX_ID_DECIMALS];
+	int len = id_to_str(id, key);
+
+	if (!hv_exists(root->backref, key, len)) {
+		list = newAV();
+		hv_store(root->backref, key, len, (SV*) list, 0);
 	}
 	else {
-		list = (DynArr*) SvIV(HeVAL(hv_fetch_ent(root->backref, value, 0, 0)));
+		list = (AV*) *(hv_fetch(root->backref, key, len, 0));
 	}
 
-	push_array(list, node);
+	av_push(list, newSViv((uintptr_t) node));
 }
 
 void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth)
@@ -178,7 +183,7 @@ bool is_within_node_rect(QuadTreeNode *node, double xmin, double ymin, double xm
 		&& (ymin <= node->ymax && ymax >= node->ymin);
 }
 
-bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
+bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius_sq)
 {
 	double check_x = x < node->xmin
 		? node->xmin - x
@@ -194,7 +199,7 @@ bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
 			: 0
 	;
 
-	return check_x * check_x + check_y * check_y <= radius * radius;
+	return check_x * check_x + check_y * check_y <= radius_sq;
 }
 
 bool is_within_node(QuadTreeNode *node, Shape *param)
@@ -207,66 +212,72 @@ bool is_within_node(QuadTreeNode *node, Shape *param)
 	}
 }
 
-void find_nodes(QuadTreeNode *node, HV *ret, Shape *param)
+void find_nodes(QuadTreeRootNode *root, QuadTreeNode *node, HV *ret, Shape *param)
 {
 	if (!node->has_objects || !is_within_node(node, param)) return;
 
 	int i;
+	char key[MAX_ID_DECIMALS];
 
 	if (node->values != NULL) {
 		for (i = 0; i < node->values->count; ++i) {
-			SV *fetched = (SV*) node->values->ptr[i];
-			SvREFCNT_inc(fetched);
-			hv_store_ent(ret, fetched, fetched, 0);
+			int id = node->values->ptr[i];
+			int len = id_to_str(id, key);
+
+			if (hv_exists(ret, key, len)) continue;
+
+			SV **fetched = hv_fetch(root->objects, key, len, 0);
+			SV *value = fetched == NULL ? NULL : *fetched;
+			hv_store(ret, key, len, value, 0);
+			SvREFCNT_inc(value);
 		}
 	}
 	else {
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			find_nodes(&node->children[i], ret, param);
+			find_nodes(root, &node->children[i], ret, param);
 		}
 	}
 }
 
-bool fill_nodes_nobackref(QuadTreeNode *node, SV *value, Shape *param)
+bool fill_nodes_nobackref(QuadTreeNode *node, int id, Shape *param)
 {
 	if (!is_within_node(node, param)) return false;
 
 	node->has_objects = true;
 	if (node->values != NULL) {
-		push_array(node->values, value);
-		return true;
+		push_array(node->values, id);
 	}
 	else {
 		int i;
-		bool result = false;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			result = fill_nodes_nobackref(&node->children[i], value, param) || result;
+			fill_nodes_nobackref(&node->children[i], id, param);
 		}
-
-		return result;
 	}
+
+	/* only first level matters - if it is added to the first level, it will
+	 * surely be added somewhere further */
+	return true;
 }
 
-bool fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, SV *value, Shape *param)
+bool fill_nodes(QuadTreeRootNode *root, QuadTreeNode *node, int id, Shape *param)
 {
 	if (!is_within_node(node, param)) return false;
 
 	node->has_objects = true;
 	if (node->values != NULL) {
-		push_array(node->values, value);
-		if (root->backref != NULL)
-			store_backref(root, node, value);
-		return true;
+		push_array(node->values, id);
+		store_backref(root, node, id);
 	}
 	else {
 		int i;
-		bool result = false;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			result = fill_nodes(root, &node->children[i], value, param) || result;
+			fill_nodes(root, &node->children[i], id, param);
 		}
-
-		return result;
 	}
+
+	/* only first level matters - if it is added to the first level, it will
+	 * surely be added somewhere further */
+	return true;
 }
 
 void clear_node(QuadTreeNode *node)
@@ -294,15 +305,16 @@ void clear_tree(QuadTreeRootNode *root)
 	SV *value;
 
 	if (root->backref != NULL) {
-		hv_iterinit(root->backref);
-		while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) {
-			destroy_array((DynArr*) SvIV(value));
-		}
+		/* hv_iterinit(root->backref); */
+		/* while ((value = hv_iternextsv(root->backref, &key, &retlen)) != NULL) { */
+		/* 	SvREFCNT_dec(value); */
+		/* } */
 
 		hv_clear(root->backref);
 	}
 
-	refresh_object_array(root->objects);
+	hv_clear(root->objects);
+	root->max_id = 0;
 }
 
 /* XS helpers */
@@ -335,5 +347,66 @@ AV* get_hash_values (HV* hash)
 	}
 
 	return ret;
+}
+
+AV* get_backref (QuadTreeRootNode *root, int id)
+{
+	char key[MAX_ID_DECIMALS];
+	int len = id_to_str(id, key);
+
+	SV **value = hv_fetch(root->backref, key, len, 0);
+	if (value == NULL) return NULL;
+	return (AV*) *value;
+}
+
+SV* get_object (QuadTreeRootNode *root, int id)
+{
+	char key[MAX_ID_DECIMALS];
+	int len = id_to_str(id, key);
+
+	SV **value = hv_fetch(root->objects, key, len, 0);
+	if (value == NULL) return NULL;
+	return *value;
+}
+
+int get_object_id (QuadTreeRootNode *root, SV* object)
+{
+	return SvIV(HeVAL(hv_fetch_ent(root->objects_reverse, object, 0, 0)));
+}
+
+int set_object (QuadTreeRootNode *root, SV *object)
+{
+	int id = ++root->max_id;
+
+	char key[MAX_ID_DECIMALS];
+	int len = id_to_str(id, key);
+	hv_store(root->objects, key, len, object, 0);
+	SvREFCNT_inc(object);
+
+	return id;
+}
+
+void set_reverse_object (QuadTreeRootNode *root, SV *object, int id)
+{
+	hv_store_ent(root->objects_reverse, object, newSViv(id), 0);
+}
+
+void unset_object (QuadTreeRootNode *root, int id)
+{
+	char key[MAX_ID_DECIMALS];
+	int len = id_to_str(id, key);
+	hv_delete(root->objects, key, len, 0);
+
+	/* NOTE: max_id does not need to be altered */
+}
+
+/* drops all stuff, including backrefs */
+void drop_object (QuadTreeRootNode *root, SV *object, int id)
+{
+	char key[MAX_ID_DECIMALS];
+	int len = id_to_str(id, key);
+	hv_delete(root->objects, key, len, 0);
+	hv_delete(root->backref, key, len, 0);
+	hv_delete_ent(root->objects_reverse, object, 0, 0);
 }
 

@@ -39,6 +39,9 @@ _AQT_deinit(self)
 		destroy_node(root->node);
 		free(root->node);
 		SvREFCNT_dec((SV*) root->backref);
+		SvREFCNT_dec((SV*) root->objects);
+		SvREFCNT_dec((SV*) root->objects_reverse);
+
 
 		free(root);
 
@@ -54,18 +57,24 @@ _AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		Shape param;
-		param.type = shape_circle;
 		param.dimensions[0] = x;
 		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
 		if (items > 5) {
 			param.type = shape_rectangle;
+			param.dimensions[2] = x2_or_radius;
 			param.dimensions[3] = SvNV(ST(5));
 		}
+		else {
+			param.type = shape_circle;
+			param.dimensions[2] = x2_or_radius * x2_or_radius;
+		}
 
-		if (fill_nodes(root, root->node, object, &param)) {
-			push_array_SV(root->objects, object);
+		int id = set_object(root, object);
+		if (!fill_nodes(root, root->node, id, &param)) {
+			unset_object(root, id);
+		}
+		else {
+			set_reverse_object(root, object, id);
 		}
 
 SV*
@@ -80,17 +89,19 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 		HV *ret_hash = newHV();
 
 		Shape param;
-		param.type = shape_circle;
 		param.dimensions[0] = x;
 		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
 		if (items > 4) {
 			param.type = shape_rectangle;
+			param.dimensions[2] = x2_or_radius;
 			param.dimensions[3] = SvNV(ST(4));
 		}
+		else {
+			param.type = shape_circle;
+			param.dimensions[2] = x2_or_radius * x2_or_radius;
+		}
 
-		find_nodes(root->node, ret_hash, &param);
+		find_nodes(root, root->node, ret_hash, &param);
 		AV *ret = get_hash_values(ret_hash);
 
 		SvREFCNT_dec((SV*) ret_hash);
@@ -105,18 +116,21 @@ _AQT_delete(self, object)
 	CODE:
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
-		if (hv_exists_ent(root->backref, object, 0)) {
-			DynArr* list = (DynArr*) SvIV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
+		int id = get_object_id(root, object);
+		AV *list = get_backref(root, id);
+		int i, j;
 
-			int i, j;
-			for (i = 0; i < list->count; ++i) {
-				QuadTreeNode *node = (QuadTreeNode*) list->ptr[i];
+		if (list != NULL) {
+			for (i = 0; i < av_count(list); ++i) {
+				SV **fetched = av_fetch(list, i, 0);
+				assert(fetched != NULL);
+
+				QuadTreeNode *node = (QuadTreeNode*) SvIV(*fetched);
 				DynArr* new_list = create_array();
 
-				for(j = 0; j < node->values->count; ++j) {
-					SV *fetched = (SV*) node->values->ptr[j];
-					if (!sv_eq(fetched, object)) {
-						push_array(new_list, fetched);
+				for (j = 0; j < node->values->count; ++j) {
+					if (node->values->ptr[j] != id) {
+						push_array(new_list, id);
 					}
 				}
 
@@ -125,22 +139,7 @@ _AQT_delete(self, object)
 				if (new_list->count == 0) clear_has_objects(node);
 			}
 
-			destroy_array(list);
-			hv_delete_ent(root->backref, object, 0, 0);
-
-			DynArr* new_list = create_array();
-			for(j = 0; j < root->objects->count; ++j) {
-				SV *fetched = (SV*) root->objects->ptr[j];
-				if (!sv_eq(fetched, object)) {
-					push_array(new_list, fetched);
-				}
-				else {
-					SvREFCNT_dec(fetched);
-				}
-			}
-
-			destroy_array(root->objects);
-			root->objects = new_list;
+			drop_object(root, object, id);
 		}
 
 void
@@ -183,9 +182,9 @@ nbr_AQT_deinit(self)
 		clear_tree(root);
 		destroy_node(root->node);
 		free(root->node);
+		SvREFCNT_dec((SV*) root->objects);
 
 		free(root);
-
 
 void
 nbr_AQT_addObject(self, object, x, y, x2_or_radius, ...)
@@ -198,18 +197,21 @@ nbr_AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		Shape param;
-		param.type = shape_circle;
 		param.dimensions[0] = x;
 		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
 		if (items > 5) {
 			param.type = shape_rectangle;
+			param.dimensions[2] = x2_or_radius;
 			param.dimensions[3] = SvNV(ST(5));
 		}
+		else {
+			param.type = shape_circle;
+			param.dimensions[2] = x2_or_radius * x2_or_radius;
+		}
 
-		if (fill_nodes_nobackref(root->node, object, &param)) {
-			push_array_SV(root->objects, object);
+		int id = set_object(root, object);
+		if (!fill_nodes_nobackref(root->node, id, &param)) {
+			unset_object(root, id);
 		}
 
 SV*
@@ -224,17 +226,19 @@ nbr_AQT_findObjects(self, x, y, x2_or_radius, ...)
 		HV *ret_hash = newHV();
 
 		Shape param;
-		param.type = shape_circle;
 		param.dimensions[0] = x;
 		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
 		if (items > 4) {
 			param.type = shape_rectangle;
+			param.dimensions[2] = x2_or_radius;
 			param.dimensions[3] = SvNV(ST(4));
 		}
+		else {
+			param.type = shape_circle;
+			param.dimensions[2] = x2_or_radius * x2_or_radius;
+		}
 
-		find_nodes(root->node, ret_hash, &param);
+		find_nodes(root, root->node, ret_hash, &param);
 		AV *ret = get_hash_values(ret_hash);
 
 		SvREFCNT_dec((SV*) ret_hash);
