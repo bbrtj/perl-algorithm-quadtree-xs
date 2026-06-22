@@ -54,14 +54,16 @@ _AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		Shape param;
-		param.type = shape_circle;
-		param.dimensions[0] = x;
-		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
+		param.x = x;
+		param.y = y;
 		if (items > 5) {
 			param.type = shape_rectangle;
-			param.dimensions[3] = SvNV(ST(5));
+			param.x2 = x2_or_radius;
+			param.y2 = SvNV(ST(5));
+		}
+		else {
+			param.type = shape_circle;
+			param.radius_sq = x2_or_radius * x2_or_radius;
 		}
 
 		if (fill_nodes(root, root->node, object, &param)) {
@@ -80,14 +82,16 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 		HV *ret_hash = newHV();
 
 		Shape param;
-		param.type = shape_circle;
-		param.dimensions[0] = x;
-		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
+		param.x = x;
+		param.y = y;
 		if (items > 4) {
 			param.type = shape_rectangle;
-			param.dimensions[3] = SvNV(ST(4));
+			param.x2 = x2_or_radius;
+			param.y2 = SvNV(ST(4));
+		}
+		else {
+			param.type = shape_circle;
+			param.radius_sq = x2_or_radius * x2_or_radius;
 		}
 
 		find_nodes(root->node, ret_hash, &param);
@@ -198,14 +202,16 @@ nbr_AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		Shape param;
-		param.type = shape_circle;
-		param.dimensions[0] = x;
-		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
+		param.x = x;
+		param.y = y;
 		if (items > 5) {
 			param.type = shape_rectangle;
-			param.dimensions[3] = SvNV(ST(5));
+			param.x2 = x2_or_radius;
+			param.y2 = SvNV(ST(5));
+		}
+		else {
+			param.type = shape_circle;
+			param.radius_sq = x2_or_radius * x2_or_radius;
 		}
 
 		if (fill_nodes_nobackref(root->node, object, &param)) {
@@ -224,14 +230,16 @@ nbr_AQT_findObjects(self, x, y, x2_or_radius, ...)
 		HV *ret_hash = newHV();
 
 		Shape param;
-		param.type = shape_circle;
-		param.dimensions[0] = x;
-		param.dimensions[1] = y;
-		param.dimensions[2] = x2_or_radius;
-
+		param.x = x;
+		param.y = y;
 		if (items > 4) {
 			param.type = shape_rectangle;
-			param.dimensions[3] = SvNV(ST(4));
+			param.x2 = x2_or_radius;
+			param.y2 = SvNV(ST(4));
+		}
+		else {
+			param.type = shape_circle;
+			param.radius_sq = x2_or_radius * x2_or_radius;
 		}
 
 		find_nodes(root->node, ret_hash, &param);

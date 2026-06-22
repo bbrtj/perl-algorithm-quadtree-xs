@@ -40,7 +40,11 @@ enum ShapeType {
 
 struct Shape {
 	ShapeType type;
-	double dimensions[4];
+	double x;
+	double y;
+	double x2;
+	double y2;
+	double radius_sq;
 };
 
 

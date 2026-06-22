@@ -172,38 +172,31 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	}
 }
 
-bool is_within_node_rect(QuadTreeNode *node, double xmin, double ymin, double xmax, double ymax)
+bool is_within_node(QuadTreeNode *node, Shape *s)
 {
-	return (xmin <= node->xmax && xmax >= node->xmin)
-		&& (ymin <= node->ymax && ymax >= node->ymin);
-}
+	switch (s->type) {
+		case shape_rectangle: {
+			return (s->x <= node->xmax && s->x2 >= node->xmin)
+				&& (s->y <= node->ymax && s->y2 >= node->ymin);
+		}
 
-bool is_within_node_circ(QuadTreeNode *node, double x, double y, double radius)
-{
-	double check_x = x < node->xmin
-		? node->xmin - x
-		: x > node->xmax
-			? node->xmax - x
-			: 0
-	;
+		case shape_circle: {
+			double check_x = s->x < node->xmin
+				? node->xmin - s->x
+				: s->x > node->xmax
+					? node->xmax - s->x
+					: 0
+			;
 
-	double check_y = y < node->ymin
-		? node->ymin - y
-		: y > node->ymax
-			? node->ymax - y
-			: 0
-	;
+			double check_y = s->y < node->ymin
+				? node->ymin - s->y
+				: s->y > node->ymax
+					? node->ymax - s->y
+					: 0
+			;
 
-	return check_x * check_x + check_y * check_y <= radius * radius;
-}
-
-bool is_within_node(QuadTreeNode *node, Shape *param)
-{
-	switch (param->type) {
-		case shape_rectangle:
-			return is_within_node_rect(node, param->dimensions[0], param->dimensions[1], param->dimensions[2], param->dimensions[3]);
-		case shape_circle:
-			return is_within_node_circ(node, param->dimensions[0], param->dimensions[1], param->dimensions[2]);
+			return check_x * check_x + check_y * check_y <= s->radius_sq;
+		}
 	}
 }
 
