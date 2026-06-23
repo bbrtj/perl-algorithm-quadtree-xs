@@ -137,6 +137,7 @@ QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
 void destroy_node(QuadTreeNode *node)
 {
 	destroy_array(node->values);
+	destroy_shape(node->dimensions);
 
 	if (node->children != NULL) {
 		int i;
@@ -162,10 +163,8 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 {
 	bool last = --depth == 0;
 
-	node->xmin = xmin;
-	node->ymin = ymin;
-	node->xmax = xmax;
-	node->ymax = ymax;
+	node->dimensions = create_shape();
+	prepare_rectangle(node->dimensions, xmin, ymin, xmax, ymax);
 	node->values = create_array();
 
 	if (!last) {
@@ -180,46 +179,67 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	}
 }
 
-bool is_fully_contained (QuadTreeNode *node, Shape *s)
+bool shape_contained (Shape *inner_s, Shape *s)
 {
-	return (s->x <= node->xmin && s->x2 >= node->xmax)
-		&& (s->y <= node->ymin && s->y2 >= node->ymax);
+	return (s->x <= inner_s->x && s->x2 >= inner_s->x2)
+		&& (s->y <= inner_s->y && s->y2 >= inner_s->y2);
 }
 
-bool is_within_node(QuadTreeNode *node, Shape *s)
+bool shapes_overlap (Shape *s1, Shape *s2)
 {
-	switch (s->type) {
-		case shape_rectangle: {
-			return (s->x <= node->xmax && s->x2 >= node->xmin)
-				&& (s->y <= node->ymax && s->y2 >= node->ymin);
-		}
+	if (s1->type == s2->type) {
+		switch (s1->type) {
+			case shape_circle: {
+				/* circle vs circle */
+				double distance_x = s1->x0 - s2->x0;
+				double distance_y = s1->y0 - s2->y0;
+				double radius = s1->radius + s2->radius;
 
-		case shape_circle: {
-			double check_x = s->x0 < node->xmin
-				? node->xmin - s->x0
-				: s->x0 > node->xmax
-					? node->xmax - s->x0
-					: 0
-			;
-
-			double check_y = s->y0 < node->ymin
-				? node->ymin - s->y0
-				: s->y0 > node->ymax
-					? node->ymax - s->y0
-					: 0
-			;
-
-			return check_x * check_x + check_y * check_y <= s->radius_sq;
+				return distance_x * distance_x + distance_y * distance_y
+					<= radius * radius;
+			}
+			case shape_rectangle: {
+				/* rectangle vs rectangle */
+				if (s1->type == shape_rectangle) {
+					return (s1->x <= s2->x2 && s1->x2 >= s2->x)
+						&& (s1->y <= s2->y2 && s1->y2 >= s2->y);
+				}
+			}
 		}
 	}
+
+	/* circle vs rectangle - circle first */
+	/* circles first, if available */
+	if (s2->type == shape_circle) {
+		Shape *stemp;
+		stemp = s1;
+		s1 = s2;
+		s2 = stemp;
+	}
+
+	double check_x = s1->x0 < s2->x
+		? s2->x - s1->x0
+		: s1->x0 > s2->x2
+			? s2->x2 - s1->x0
+			: 0
+	;
+
+	double check_y = s1->y0 < s2->y
+		? s2->y - s1->y0
+		: s1->y0 > s2->y2
+			? s2->y2 - s1->y0
+			: 0
+	;
+
+	return check_x * check_x + check_y * check_y <= s1->radius_sq;
 }
 
-void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool geometry_check)
+void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool fully_contained)
 {
 	if (!node->has_objects) return;
 
-	bool fully_contained = !geometry_check || is_fully_contained(node, param);
-	if (!(fully_contained || is_within_node(node, param))) return;
+	fully_contained = fully_contained || shape_contained(node->dimensions, param);
+	if (!(fully_contained || shapes_overlap(param, node->dimensions))) return;
 
 	int i;
 	for (i = 0; i < node->values->count; ++i) {
@@ -230,18 +250,18 @@ void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool geometry_check)
 
 	if (node->children != NULL) {
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			find_nodes(&node->children[i], ret, param, !fully_contained);
+			find_nodes(&node->children[i], ret, param, fully_contained);
 		}
 	}
 }
 
 bool fill_nodes (QuadTreeNode *node, SV *value, Shape *param)
 {
-	if (is_fully_contained(node, param)) {
+	if (shape_contained(node->dimensions, param)) {
 		push_array(node->values, value);
 	}
 	else {
-		if (!is_within_node(node, param)) return false;
+		if (!shapes_overlap(param, node->dimensions)) return false;
 
 		if (node->children == NULL) {
 			push_array(node->values, value);
@@ -260,12 +280,12 @@ bool fill_nodes (QuadTreeNode *node, SV *value, Shape *param)
 	return true;
 }
 
-void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool geometry_check)
+void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool fully_contained)
 {
 	if (!node->has_objects) return;
 
-	bool fully_contained = !geometry_check || is_fully_contained(node, param);
-	if (!(fully_contained || is_within_node(node, param))) return;
+	fully_contained = fully_contained || shape_contained(node->dimensions, param);
+	if (!(fully_contained || shapes_overlap(param, node->dimensions))) return;
 
 	int i;
 
@@ -286,7 +306,7 @@ void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool geometry_che
 
 	if (node->children != NULL) {
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			delete_nodes(&node->children[i], value, param, !fully_contained);
+			delete_nodes(&node->children[i], value, param, fully_contained);
 			node->has_objects = node->has_objects || node->children[i].has_objects;
 		}
 	}
@@ -328,23 +348,39 @@ void clear_tree(QuadTreeRootNode *root)
 	clear_array(root->objects);
 }
 
+void filter_geometry(HV* results, HV* shapes, Shape *s)
+{
+	HE *he;
+
+	hv_iterinit(results);
+	while ((he = hv_iternext(results)) != NULL) {
+		STRLEN len;
+		char *key = HePV(he, len);
+		SV **fetched = hv_fetch(shapes, key, len, 0);
+		Shape* s2 = (Shape*) SvIV(*fetched);
+
+		if (!shapes_overlap(s, s2))
+			hv_delete(results, key, len, 0);
+	}
+}
+
 /* XS helpers */
 
-SV* get_hash_key (HV* hash, const char* key)
+SV* get_hash_key (HV* hash, const char* key, int len)
 {
-	SV **value = hv_fetch(hash, key, strlen(key), 0);
+	SV **value = hv_fetch(hash, key, len, 0);
 
-	assert(value != NULL);
+	if (value == NULL) return NULL;
 	return *value;
 }
 
 QuadTreeRootNode* get_root_from_perl(SV *self)
 {
-	SV **value = hv_fetch((HV*) SvRV(self), "ROOT", 4, 0);
+	SV *value = get_hash_key((HV*) SvRV(self), "ROOT", 4);
 	if (value == NULL)
 		croak("quad tree root node is undefined");
 
-	return (QuadTreeRootNode*) SvIV(*value);
+	return (QuadTreeRootNode*) SvIV(value);
 }
 
 AV* get_hash_values (HV* hash)

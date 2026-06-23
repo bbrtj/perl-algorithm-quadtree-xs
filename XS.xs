@@ -10,19 +10,19 @@ MODULE = Algorithm::QuadTree::XS		PACKAGE = Algorithm::QuadTree::XS
 PROTOTYPES: DISABLE
 
 void
-_AQT_init(obj)
-		SV *obj
+_AQT_init(self)
+		SV *self
 	CODE:
 		QuadTreeRootNode *root = create_root();
 
-		HV *params = (HV*) SvRV(obj);
+		HV *params = (HV*) SvRV(self);
 
 		node_add_level(root->node,
-			SvNV(get_hash_key(params, "XMIN")),
-			SvNV(get_hash_key(params, "YMIN")),
-			SvNV(get_hash_key(params, "XMAX")),
-			SvNV(get_hash_key(params, "YMAX")),
-			SvIV(get_hash_key(params, "DEPTH"))
+			SvNV(get_hash_key(params, "XMIN", 4)),
+			SvNV(get_hash_key(params, "YMIN", 4)),
+			SvNV(get_hash_key(params, "XMAX", 4)),
+			SvNV(get_hash_key(params, "YMAX", 4)),
+			SvIV(get_hash_key(params, "DEPTH", 5))
 		);
 
 		SV *root_sv = newSViv((uintptr_t) root);
@@ -78,6 +78,8 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 	CODE:
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
+		HV *params = (HV*) SvRV(self);
+		SV *geometry_checks = get_hash_key(params, "CHECK", 5);
 		HV *ret_hash = newHV();
 
 		Shape param;
@@ -88,7 +90,10 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 			prepare_circle(&param, x, y, x2_or_radius);
 		}
 
-		find_nodes(root->node, ret_hash, &param, true);
+		find_nodes(root->node, ret_hash, &param, false);
+		if (geometry_checks != NULL && SvIV(geometry_checks) != 0)
+			filter_geometry(ret_hash, root->backref, &param);
+
 		AV *ret = get_hash_values(ret_hash);
 
 		SvREFCNT_dec((SV*) ret_hash);
@@ -105,7 +110,7 @@ _AQT_delete(self, object)
 
 		if (hv_exists_ent(root->backref, object, 0)) {
 			Shape* s = (Shape*) SvIV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
-			delete_nodes(root->node, object, s, true);
+			delete_nodes(root->node, object, s, false);
 			destroy_shape(s);
 			disown_object(root, object);
 		}
