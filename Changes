@@ -1,6 +1,7 @@
 Revision history for Perl extension Algorithm::QuadTree::XS.
 
 {{$NEXT}}
+	- improve performance for objects which are big enough to span multiple nodes
 
 0.10 Mon Jun 22 2026
 	- Improve the method of handling backreferences in XS backend

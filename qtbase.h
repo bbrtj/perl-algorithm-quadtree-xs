@@ -40,10 +40,10 @@ enum ShapeType {
 
 struct Shape {
 	ShapeType type;
-	double x;
-	double y;
-	double x2;
-	double y2;
+	double x, y, x2, y2;
+	double radius;
+
+	double x0, y0;
 	double radius_sq;
 };
 
@@ -51,6 +51,8 @@ struct Shape {
 typedef enum ShapeType ShapeType;
 
 Shape* create_shape();
+void prepare_rectangle(Shape *s, double x, double y, double x2, double y2);
+void prepare_circle(Shape *s, double x0, double y0, double radius);
 void destroy_shape(Shape *s);
 
 DynArr* create_array();
@@ -65,9 +67,9 @@ void adopt_object (QuadTreeRootNode *root, SV *value, Shape *s);
 void disown_object (QuadTreeRootNode *root, SV *value);
 
 void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth);
-void find_nodes(QuadTreeNode *node, HV *ret, Shape *param);
+void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool geometry_check);
 bool fill_nodes(QuadTreeNode *node, SV *value, Shape *param);
-void delete_nodes(QuadTreeNode *node, SV *value, Shape *param);
+void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool geometry_check);
 void clear_tree(QuadTreeRootNode *root);
 
 /* XS helpers */

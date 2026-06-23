@@ -55,16 +55,11 @@ _AQT_addObject(self, object, x, y, x2_or_radius, ...)
 		QuadTreeRootNode *root = get_root_from_perl(self);
 
 		Shape *param = create_shape();
-		param->x = x;
-		param->y = y;
 		if (items > 5) {
-			param->type = shape_rectangle;
-			param->x2 = x2_or_radius;
-			param->y2 = SvNV(ST(5));
+			prepare_rectangle(param, x, y, x2_or_radius, SvNV(ST(5)));
 		}
 		else {
-			param->type = shape_circle;
-			param->radius_sq = x2_or_radius * x2_or_radius;
+			prepare_circle(param, x, y, x2_or_radius);
 		}
 
 		if (fill_nodes(root->node, object, param)) {
@@ -86,19 +81,14 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 		HV *ret_hash = newHV();
 
 		Shape param;
-		param.x = x;
-		param.y = y;
 		if (items > 4) {
-			param.type = shape_rectangle;
-			param.x2 = x2_or_radius;
-			param.y2 = SvNV(ST(4));
+			prepare_rectangle(&param, x, y, x2_or_radius, SvNV(ST(4)));
 		}
 		else {
-			param.type = shape_circle;
-			param.radius_sq = x2_or_radius * x2_or_radius;
+			prepare_circle(&param, x, y, x2_or_radius);
 		}
 
-		find_nodes(root->node, ret_hash, &param);
+		find_nodes(root->node, ret_hash, &param, true);
 		AV *ret = get_hash_values(ret_hash);
 
 		SvREFCNT_dec((SV*) ret_hash);
@@ -115,7 +105,7 @@ _AQT_delete(self, object)
 
 		if (hv_exists_ent(root->backref, object, 0)) {
 			Shape* s = (Shape*) SvIV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
-			delete_nodes(root->node, object, s);
+			delete_nodes(root->node, object, s, true);
 			destroy_shape(s);
 			disown_object(root, object);
 		}

@@ -1,4 +1,5 @@
 #include "qtbase.h"
+#include <math.h>
 
 #define CHILDREN_PER_NODE 4
 #define MAX_SIZE_INITIAL 4
@@ -9,6 +10,30 @@ Shape* create_shape()
 {
 	Shape *s = malloc(sizeof *s);
 	return s;
+}
+
+void prepare_rectangle(Shape *s, double x, double y, double x2, double y2)
+{
+	s->type = shape_rectangle;
+	s->x = x;
+	s->y = y;
+	s->x2 = x2;
+	s->y2 = y2;
+}
+
+void prepare_circle(Shape *s, double x0, double y0, double radius)
+{
+	s->type = shape_circle;
+	s->x0 = x0;
+	s->y0 = y0;
+	s->radius = radius;
+	s->radius_sq = radius * radius;
+
+	double contained_radius = s->radius / sqrt(2);
+	s->x = x0 - contained_radius;
+	s->x2 = x0 + contained_radius;
+	s->y = y0 - contained_radius;
+	s->y2 = y0 + contained_radius;
 }
 
 void destroy_shape(Shape *s)
@@ -111,31 +136,15 @@ QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
 /* NOTE: does not actually free the node, but frees its children nodes */
 void destroy_node(QuadTreeNode *node)
 {
-	if (node->values != NULL) {
-		destroy_array(node->values);
-	}
-	else {
+	destroy_array(node->values);
+
+	if (node->children != NULL) {
 		int i;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
 			destroy_node(&node->children[i]);
 		}
 
 		free(node->children);
-	}
-}
-
-void clear_has_objects (QuadTreeNode *node)
-{
-	if (node->values == NULL) {
-		int i;
-		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			if (node->children[i].has_objects) return;
-		}
-	}
-
-	node->has_objects = false;
-	if (node->parent != NULL) {
-		clear_has_objects(node->parent);
 	}
 }
 
@@ -157,11 +166,9 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	node->ymin = ymin;
 	node->xmax = xmax;
 	node->ymax = ymax;
+	node->values = create_array();
 
-	if (last) {
-		node->values = create_array();
-	}
-	else {
+	if (!last) {
 		node->children = create_nodes(CHILDREN_PER_NODE, node);
 		double xmid = xmin + (xmax - xmin) / 2;
 		double ymid = ymin + (ymax - ymin) / 2;
@@ -173,6 +180,12 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	}
 }
 
+bool is_fully_contained (QuadTreeNode *node, Shape *s)
+{
+	return (s->x <= node->xmin && s->x2 >= node->xmax)
+		&& (s->y <= node->ymin && s->y2 >= node->ymax);
+}
+
 bool is_within_node(QuadTreeNode *node, Shape *s)
 {
 	switch (s->type) {
@@ -182,17 +195,17 @@ bool is_within_node(QuadTreeNode *node, Shape *s)
 		}
 
 		case shape_circle: {
-			double check_x = s->x < node->xmin
-				? node->xmin - s->x
-				: s->x > node->xmax
-					? node->xmax - s->x
+			double check_x = s->x0 < node->xmin
+				? node->xmin - s->x0
+				: s->x0 > node->xmax
+					? node->xmax - s->x0
 					: 0
 			;
 
-			double check_y = s->y < node->ymin
-				? node->ymin - s->y
-				: s->y > node->ymax
-					? node->ymax - s->y
+			double check_y = s->y0 < node->ymin
+				? node->ymin - s->y0
+				: s->y0 > node->ymax
+					? node->ymax - s->y0
 					: 0
 			;
 
@@ -201,37 +214,43 @@ bool is_within_node(QuadTreeNode *node, Shape *s)
 	}
 }
 
-void find_nodes(QuadTreeNode *node, HV *ret, Shape *param)
+void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool geometry_check)
 {
-	if (!node->has_objects || !is_within_node(node, param)) return;
+	if (!node->has_objects) return;
+
+	bool fully_contained = !geometry_check || is_fully_contained(node, param);
+	if (!(fully_contained || is_within_node(node, param))) return;
 
 	int i;
-
-	if (node->values != NULL) {
-		for (i = 0; i < node->values->count; ++i) {
-			SV *fetched = (SV*) node->values->ptr[i];
-			SvREFCNT_inc(fetched);
-			hv_store_ent(ret, fetched, fetched, 0);
-		}
+	for (i = 0; i < node->values->count; ++i) {
+		SV *fetched = (SV*) node->values->ptr[i];
+		SvREFCNT_inc(fetched);
+		hv_store_ent(ret, fetched, fetched, 0);
 	}
-	else {
+
+	if (node->children != NULL) {
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			find_nodes(&node->children[i], ret, param);
+			find_nodes(&node->children[i], ret, param, !fully_contained);
 		}
 	}
 }
 
 bool fill_nodes (QuadTreeNode *node, SV *value, Shape *param)
 {
-	if (!is_within_node(node, param)) return false;
-
-	if (node->values != NULL) {
+	if (is_fully_contained(node, param)) {
 		push_array(node->values, value);
 	}
 	else {
-		int i;
-		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			fill_nodes(&node->children[i], value, param);
+		if (!is_within_node(node, param)) return false;
+
+		if (node->children == NULL) {
+			push_array(node->values, value);
+		}
+		else {
+			int i;
+			for (i = 0; i < CHILDREN_PER_NODE; ++i) {
+				fill_nodes(&node->children[i], value, param);
+			}
 		}
 	}
 
@@ -241,13 +260,16 @@ bool fill_nodes (QuadTreeNode *node, SV *value, Shape *param)
 	return true;
 }
 
-void delete_nodes(QuadTreeNode *node, SV *value, Shape *param)
+void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool geometry_check)
 {
-	if (!node->has_objects || !is_within_node(node, param)) return;
+	if (!node->has_objects) return;
+
+	bool fully_contained = !geometry_check || is_fully_contained(node, param);
+	if (!(fully_contained || is_within_node(node, param))) return;
 
 	int i;
 
-	if (node->values != NULL) {
+	if (node->values->count > 0) {
 		DynArr* new_list = create_array();
 
 		for (i = 0; i < node->values->count; ++i) {
@@ -259,11 +281,13 @@ void delete_nodes(QuadTreeNode *node, SV *value, Shape *param)
 
 		destroy_array(node->values);
 		node->values = new_list;
-		if (new_list->count == 0) clear_has_objects(node);
+		node->has_objects = new_list->count > 0;
 	}
-	else {
+
+	if (node->children != NULL) {
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
-			delete_nodes(&node->children[i], value, param);
+			delete_nodes(&node->children[i], value, param, !fully_contained);
+			node->has_objects = node->has_objects || node->children[i].has_objects;
 		}
 	}
 }
@@ -272,11 +296,9 @@ void clear_node(QuadTreeNode *node)
 {
 	if (!node->has_objects) return;
 	node->has_objects = false;
+	clear_array(node->values);
 
-	if (node->values != NULL) {
-		clear_array(node->values);
-	}
-	else {
+	if (node->children != NULL) {
 		int i;
 		for (i = 0; i < CHILDREN_PER_NODE; ++i) {
 			clear_node(&node->children[i]);
