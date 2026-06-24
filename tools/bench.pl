@@ -30,37 +30,58 @@ for (1 .. 10) {
 }
 
 # NOTE: same area
-my $side = 40;
-my $radius = ($side ** 2 / pi) ** 0.5;
+my $side_small = 40;
+my $radius_small = ($side_small ** 2 / pi) ** 0.5;
+my $side_big = 200;
+my $radius_big = ($side_big ** 2 / pi) ** 0.5;
 
 # NOTE: don't start at 500, since then rectangles will border with more areas
 my $start = 501;
-my $center = 501 + $side / 2;
+my $center = 501 + $side_big / 2;
 
 timethese 200.01, {
-	clear => sub {
-		$qt->add('test', 0, 0, 1000, 1000);
-		$qt->clear;
-	},
-	insert_100 => sub {
+	insert_100_small => sub {
 		$qt->clear;
 
 		for my $x (0 .. 4) {
 			for my $y (0 .. 9) {
-				$qt->add("test$x$y", $x * 100, $y * 100, $x * 100 + $side, $y * 100 + $side);
+				$qt->add("test$x$y", $x * 100, $y * 100, $x * 100 + $side_small, $y * 100 + $side_small);
 			}
 		}
 
 		for my $x (5 .. 9) {
 			for my $y (0 .. 9) {
-				$qt->add("test$x$y", $x * 100, $y * 100, $radius);
+				$qt->add("test$x$y", $x * 100, $y * 100, $radius_small);
+			}
+		}
+	},
+	insert_100_big => sub {
+		$qt->clear;
+
+		for my $x (0 .. 4) {
+			for my $y (0 .. 9) {
+				$qt->add("test$x$y", $x * 100, $y * 100, $x * 100 + $side_big, $y * 100 + $side_big);
+			}
+		}
+
+		for my $x (5 .. 9) {
+			for my $y (0 .. 9) {
+				$qt->add("test$x$y", $x * 100, $y * 100, $radius_big);
 			}
 		}
 	},
 	find_100 => sub {
-		$qt_pre->getEnclosedObjects($start, $start, $start + $side, $start + $side)
+		$qt_pre->{CHECK} = !!0;
+		$qt_pre->getEnclosedObjects($start, $start, $start + $side_big, $start + $side_big)
 			for 0 .. 4;
-		$qt_pre->getEnclosedObjects($center, $center, $radius)
+		$qt_pre->getEnclosedObjects($center, $center, $radius_big)
+			for 5 .. 9;
+	},
+	find_100_check => sub {
+		$qt_pre->{CHECK} = !!1;
+		$qt_pre->getEnclosedObjects($start, $start, $start + $side_big, $start + $side_big)
+			for 0 .. 4;
+		$qt_pre->getEnclosedObjects($center, $center, $radius_big)
 			for 5 .. 9;
 	},
 };
