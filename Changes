@@ -2,6 +2,8 @@ Revision history for Perl extension Algorithm::QuadTree::XS.
 
 {{$NEXT}}
 
+0.12 Wed Jun 24 2026
+
 0.11 Wed Jun 24 2026
 	- improve performance and memory usage for objects which are big enough to span multiple nodes
 	- slightly worsen performance for inserting small objects due to tradeoff above
