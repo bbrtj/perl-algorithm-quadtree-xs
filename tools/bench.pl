@@ -71,17 +71,15 @@ timethese 200.01, {
 		}
 	},
 	find_100 => sub {
-		$qt_pre->{CHECK} = !!0;
-		$qt_pre->getEnclosedObjects($start, $start, $start + $side_big, $start + $side_big)
+		$qt_pre->getApprox($start, $start, $start + $side_big, $start + $side_big)
 			for 0 .. 4;
-		$qt_pre->getEnclosedObjects($center, $center, $radius_big)
+		$qt_pre->getApprox($center, $center, $radius_big)
 			for 5 .. 9;
 	},
 	find_100_check => sub {
-		$qt_pre->{CHECK} = !!1;
-		$qt_pre->getEnclosedObjects($start, $start, $start + $side_big, $start + $side_big)
+		$qt_pre->get($start, $start, $start + $side_big, $start + $side_big)
 			for 0 .. 4;
-		$qt_pre->getEnclosedObjects($center, $center, $radius_big)
+		$qt_pre->get($center, $center, $radius_big)
 			for 5 .. 9;
 	},
 };
