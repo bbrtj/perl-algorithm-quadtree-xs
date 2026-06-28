@@ -46,9 +46,6 @@ struct DynArr {
 	unsigned int max_size;
 };
 
-
-typedef enum ShapeType ShapeType;
-
 Shape* create_shape();
 void prepare_rectangle(Shape *s, double x, double y, double x2, double y2);
 void prepare_circle(Shape *s, double x0, double y0, double radius);
