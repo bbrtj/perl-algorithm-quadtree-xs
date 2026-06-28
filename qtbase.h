@@ -29,7 +29,6 @@ struct Shape {
 
 struct QuadTreeNode {
 	QuadTreeNode *children;
-	QuadTreeNode *parent;
 	DynArr *values;
 	Shape *dimensions;
 	bool has_objects;
@@ -59,7 +58,7 @@ DynArr* create_array();
 void destroy_array(DynArr* arr);
 void push_array(DynArr *arr, void *ptr);
 
-QuadTreeNode* create_nodes(int count, QuadTreeNode *parent);
+QuadTreeNode* create_nodes(int count);
 void destroy_node(QuadTreeNode *node);
 QuadTreeRootNode* create_root();
 

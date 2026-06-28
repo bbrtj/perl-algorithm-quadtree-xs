@@ -118,7 +118,7 @@ void disown_object (QuadTreeRootNode *root, SV *value)
 	hv_delete_ent(root->backref, value, 0, 0);
 }
 
-QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
+QuadTreeNode* create_nodes(int count)
 {
 	QuadTreeNode *node = malloc(count * sizeof *node);
 
@@ -126,7 +126,6 @@ QuadTreeNode* create_nodes(int count, QuadTreeNode *parent)
 	for (i = 0; i < count; ++i) {
 		node[i].values = NULL;
 		node[i].children = NULL;
-		node[i].parent = parent;
 		node[i].has_objects = false;
 	}
 
@@ -152,7 +151,7 @@ void destroy_node(QuadTreeNode *node)
 QuadTreeRootNode* create_root()
 {
 	QuadTreeRootNode *root = malloc(sizeof *root);
-	root->node = create_nodes(1, NULL);
+	root->node = create_nodes(1);
 	root->backref = newHV();
 	root->objects = create_array();
 
@@ -168,7 +167,7 @@ void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, d
 	node->values = create_array();
 
 	if (!last) {
-		node->children = create_nodes(CHILDREN_PER_NODE, node);
+		node->children = create_nodes(CHILDREN_PER_NODE);
 		double xmid = xmin + (xmax - xmin) / 2;
 		double ymid = ymin + (ymax - ymin) / 2;
 
