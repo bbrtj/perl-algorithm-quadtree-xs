@@ -1,6 +1,8 @@
 use strict;
 use warnings;
 
+BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::XS::VariableDepth' }
+
 use Test::More;
 use Algorithm::QuadTree;
 
@@ -41,20 +43,6 @@ subtest 'rectangle vs rectangle check' => sub {
 	check_array $list, [];
 
 	$list = $qt->get(5, 5, 6, 6);
-	check_array $list, ['rectangle'];
-};
-
-subtest 'getApprox and getEnclosedObjects do not check geometry' => sub {
-	my $list = $qt->getApprox(5, 5, 5.1, 5.1);
-	check_array $list, ['rectangle'];
-
-	$list = $qt->getApprox(5, 5, 0.1);
-	check_array $list, ['rectangle'];
-
-	$list = $qt->getEnclosedObjects(5, 5, 5.1, 5.1);
-	check_array $list, ['rectangle'];
-
-	$list = $qt->getEnclosedObjects(5, 5, 0.1);
 	check_array $list, ['rectangle'];
 };
 

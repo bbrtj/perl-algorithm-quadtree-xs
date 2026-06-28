@@ -1,4 +1,4 @@
-package Algorithm::QuadTree::XS;
+package Algorithm::QuadTree::XS::VariableDepth;
 
 use strict;
 use warnings;
@@ -16,14 +16,14 @@ our @EXPORT = qw(
 use constant UNIQUE_RESULTS => 1;
 
 require XSLoader;
-XSLoader::load('Algorithm::QuadTree::XS', $Algorithm::QuadTree::XS::VERSION);
+XSLoader::load('Algorithm::QuadTree::XS::VariableDepth', $Algorithm::QuadTree::XS::VariableDepth::VERSION);
 
 1;
 __END__
 
 =head1 NAME
 
-Algorithm::QuadTree::XS - XS backend for Algorithm::QuadTree
+Algorithm::QuadTree::XS::VariableDepth - XS backend with variable depth
 
 =head1 SYNOPSIS
 

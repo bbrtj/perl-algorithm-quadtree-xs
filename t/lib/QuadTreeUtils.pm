@@ -84,7 +84,7 @@ sub loop_zones (&)
 sub init_zones
 {
 	my ($qt, $elements) = @_;
-	$elements ||= 1;
+	$elements ||= 3;
 
 	my $code = loop_zones {
 		my ($x_zone, $y_zone) = @_;

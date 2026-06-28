@@ -1,6 +1,8 @@
 use strict;
 use warnings;
 
+BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::XS::VariableDepth' }
+
 use Test::More;
 use Algorithm::QuadTree;
 

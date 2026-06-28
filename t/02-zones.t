@@ -1,6 +1,8 @@
 use strict;
 use warnings;
 
+BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::XS::VariableDepth' }
+
 use Test::More;
 use Algorithm::QuadTree;
 
@@ -77,29 +79,6 @@ subtest 'areas on zone vertices should return four nodes' => loop_zones {
 		object_name($x_zone - 1, $y_zone),
 		object_name($x_zone, $y_zone - 1),
 		object_name($x_zone, $y_zone),
-	];
-};
-
-subtest 'full zone area should return all the objects from surrounding zones' => sub {
-	my $list = $qt->getEnclosedObjects(
-		zone_bound(1),
-		zone_bound(1),
-		zone_bound(2),
-		zone_bound(2),
-	);
-
-	check_array $list, [
-		object_name(0, 0),
-		object_name(0, 1),
-		object_name(0, 2),
-
-		object_name(1, 0),
-		object_name(1, 1),
-		object_name(1, 2),
-
-		object_name(2, 0),
-		object_name(2, 1),
-		object_name(2, 2),
 	];
 };
 

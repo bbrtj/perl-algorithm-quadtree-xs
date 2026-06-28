@@ -12,6 +12,7 @@ typedef struct QuadTreeRootNode QuadTreeRootNode;
 typedef struct DynArr DynArr;
 typedef enum ShapeType ShapeType;
 typedef struct Shape Shape;
+typedef struct LeafObject LeafObject;
 
 enum ShapeType {
 	shape_rectangle,
@@ -22,57 +23,52 @@ struct Shape {
 	ShapeType type;
 	double x, y, x2, y2;
 	double radius;
-
-	double x0, y0;
 	double radius_sq;
+	double area;
 };
 
 struct QuadTreeNode {
 	QuadTreeNode *children;
-	QuadTreeNode *parent;
 	DynArr *values;
-	Shape *dimensions;
-	bool has_objects;
+	Shape dimensions;
+	int depth;
 };
 
 struct QuadTreeRootNode {
 	QuadTreeNode *node;
 	HV *backref;
-	DynArr *objects;
+	AV *objects;
+	int max_depth;
+};
+
+struct LeafObject {
+	SV *var;
+	Shape *shape;
 };
 
 struct DynArr {
-	void **ptr;
+	LeafObject *ptr;
 	unsigned int count;
 	unsigned int max_size;
 };
-
-
-typedef enum ShapeType ShapeType;
 
 Shape* create_shape();
 void prepare_rectangle(Shape *s, double x, double y, double x2, double y2);
 void prepare_circle(Shape *s, double x0, double y0, double radius);
 void destroy_shape(Shape *s);
 
-DynArr* create_array();
-void destroy_array(DynArr* arr);
-void push_array(DynArr *arr, void *ptr);
-
-QuadTreeNode* create_nodes(int count, QuadTreeNode *parent);
 void destroy_node(QuadTreeNode *node);
 QuadTreeRootNode* create_root();
 
 void adopt_object (QuadTreeRootNode *root, SV *value, Shape *s);
 void disown_object (QuadTreeRootNode *root, SV *value);
 
-void node_add_level(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth);
-void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool fully_contained);
+void node_init(QuadTreeNode* node, double xmin, double ymin, double xmax, double ymax, int depth);
+void node_add_level(QuadTreeNode* node);
+void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool check);
 bool fill_nodes(QuadTreeNode *node, SV *value, Shape *param);
-void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool fully_contained);
+void delete_nodes(QuadTreeNode *node, SV *value, Shape *param);
 void clear_tree(QuadTreeRootNode *root);
-
-void filter_geometry(HV* results, HV* shapes, Shape *s);
 
 /* XS helpers */
 

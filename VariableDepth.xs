@@ -5,7 +5,7 @@
 #include "ppport.h"
 #include "qtbase.h"
 
-MODULE = Algorithm::QuadTree::XS		PACKAGE = Algorithm::QuadTree::XS
+MODULE = Algorithm::QuadTree::XS::VariableDepth		PACKAGE = Algorithm::QuadTree::XS::VariableDepth
 
 PROTOTYPES: DISABLE
 
@@ -13,11 +13,11 @@ void
 _AQT_init(self)
 		SV *self
 	CODE:
-		QuadTreeRootNode *root = create_root();
-
 		HV *params = (HV*) SvRV(self);
 
-		node_add_level(root->node,
+		QuadTreeRootNode *root = create_root();
+		node_init(
+			root->node,
 			SvNV(get_hash_key(params, "XMIN", 4)),
 			SvNV(get_hash_key(params, "YMIN", 4)),
 			SvNV(get_hash_key(params, "XMAX", 4)),
@@ -38,7 +38,7 @@ _AQT_deinit(self)
 		clear_tree(root);
 		destroy_node(root->node);
 		free(root->node);
-		destroy_array(root->objects);
+		SvREFCNT_dec((SV*) root->objects);
 		SvREFCNT_dec((SV*) root->backref);
 
 		free(root);
@@ -90,9 +90,12 @@ _AQT_findObjects(self, x, y, x2_or_radius, ...)
 			prepare_circle(&param, x, y, x2_or_radius);
 		}
 
-		find_nodes(root->node, ret_hash, &param, false);
-		if (geometry_checks != NULL && SvIV(geometry_checks) != 0)
-			filter_geometry(ret_hash, root->backref, &param);
+		find_nodes(
+			root->node,
+			ret_hash,
+			&param,
+			geometry_checks != NULL && SvIV(geometry_checks) != 0
+		);
 
 		AV *ret = get_hash_values(ret_hash);
 
@@ -110,7 +113,7 @@ _AQT_delete(self, object)
 
 		if (hv_exists_ent(root->backref, object, 0)) {
 			Shape* s = (Shape*) SvIV(HeVAL(hv_fetch_ent(root->backref, object, 0, 0)));
-			delete_nodes(root->node, object, s, false);
+			delete_nodes(root->node, object, s);
 			destroy_shape(s);
 			disown_object(root, object);
 		}

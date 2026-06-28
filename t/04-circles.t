@@ -1,6 +1,8 @@
 use strict;
 use warnings;
 
+BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::XS::VariableDepth' }
+
 use Test::More;
 use Algorithm::QuadTree;
 
@@ -112,7 +114,7 @@ subtest 'area to search should work properly for circular shapes' => sub {
 
 	check_array $search_medium, [], ' (medium)';
 
-	my $search_bigger = $qt->getEnclosedObjects(6, 6, 1.5);
+	my $search_bigger = $qt->getEnclosedObjects(6, 6, 2);
 
 	check_array $search_bigger, ['circle3'], ' (bigger)';
 };

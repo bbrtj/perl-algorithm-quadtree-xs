@@ -1,6 +1,8 @@
 use strict;
 use warnings;
 
+BEGIN { $ENV{ALGORITHM_QUADTREE_BACKEND} = 'Algorithm::QuadTree::XS::VariableDepth' }
+
 use Test::More;
 use Algorithm::QuadTree;
 
@@ -28,14 +30,14 @@ Test::MemoryGrowth::no_growth {
 
 	init_zones $qt, 5;
 
-	$qt->getEnclosedObjects(
+	$qt->get(
 		zone_start(1),
 		zone_start(1),
 		zone_end(1),
 		zone_end(1),
 	);
 
-	$qt->getEnclosedObjects(
+	$qt->get(
 		zone_start(2),
 		zone_start(2),
 		AREA_SIZE / 2,
@@ -54,14 +56,18 @@ my $qt = Algorithm::QuadTree->new(
 	-depth => $QuadTreeUtils::DEPTH
 );
 
+init_zones $qt;
+
+my $clearer = loop_zones {
+	$qt->delete(object_name(@_));
+};
+
+$clearer->();
+
 Test::MemoryGrowth::no_growth {
 	init_zones $qt;
-
-	my $clearer = loop_zones {
-		$qt->delete(object_name(@_));
-	};
-
 	$clearer->();
+	warn 'done';
 }
 calls => 50, 'deleting objects does not leak';
 
