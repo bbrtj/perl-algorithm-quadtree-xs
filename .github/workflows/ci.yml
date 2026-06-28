@@ -41,7 +41,7 @@ jobs:
 
     - name: Install Dist::Zilla
       run: |
-        cpanm --notest Dist::Zilla
+        cpanm --notest Dist::Zilla Devel::PPPort
 
     - name: Install Modules
       run: |
