@@ -189,13 +189,13 @@ void find_nodes(QuadTreeNode *node, HV *ret, Shape *param, bool fully_contained)
 bool fill_nodes (QuadTreeNode *node, SV *value, Shape *param)
 {
 	if (shape_contained(node->dimensions, param)) {
-		av_push_simple(node->values, SvREFCNT_inc(value));
+		av_push(node->values, SvREFCNT_inc(value));
 	}
 	else {
 		if (!shapes_overlap(param, node->dimensions)) return false;
 
 		if (node->children == NULL) {
-			av_push_simple(node->values, SvREFCNT_inc(value));
+			av_push(node->values, SvREFCNT_inc(value));
 		}
 		else {
 			int i;
@@ -227,7 +227,7 @@ void delete_nodes(QuadTreeNode *node, SV *value, Shape *param, bool fully_contai
 		for (i = 0; i < av_count(node->values); ++i) {
 			SV **fetched = av_fetch(node->values, i, 0);
 			if (fetched != NULL && !sv_eq(*fetched, value)) {
-				av_push_simple(new_list, SvREFCNT_inc(*fetched));
+				av_push(new_list, SvREFCNT_inc(*fetched));
 			}
 		}
 
